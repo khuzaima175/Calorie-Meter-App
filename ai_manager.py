@@ -1,11 +1,14 @@
 import google.generativeai as genai
 import json
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class AIManager:
     def __init__(self):
-        # Default API key (can be improved with .env later)
-        self.api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyARiMM-cfeVHABE0q47hb14RBh0Z7mImV4")
+        # API key from .env
+        self.api_key = os.environ.get("GEMINI_API_KEY")
         self.model = None
         self.configure()
 
