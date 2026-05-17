@@ -16,7 +16,10 @@ A modern, python-based desktop application for tracking calories, nutrition, and
   - **Motivational Coach**: Get daily AI-generated motivation based on your streak and progress.
 - **💧 Water & Exercise Tracking**: dedicated tabs for hydration and workout logging.
 - **📈 History & Goals**: Review past logs and set customized calorie/macro targets.
-- **🌑 Modern UI**: Built with CustomTkinter for a sleek dark-mode experience.
+- **🔥 Streak Tracking & Quick Add**: Keep track of consecutive logging days and use one-click chips for common foods.
+- **📊 Data Export**: Easily export your daily nutrition and exercise logs to CSV format.
+- **⌨️ Keyboard Navigation**: Swiftly move between dates using `<Control-Left>` and `<Control-Right>`.
+- **🌑 Modern UI**: Built with CustomTkinter, featuring live Theme switching (Light/Dark mode) and smooth animations.
 
 ## Tech Stack
 
