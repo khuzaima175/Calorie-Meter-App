@@ -219,28 +219,33 @@ class SmartCalorieTrackerApp(customtkinter.CTk):
 
         nav_frame = customtkinter.CTkFrame(self.sidebar_frame, fg_color="transparent")
         nav_frame.grid(row=10, column=0, padx=Layout.PAD_SM, sticky="ew")
-        nav_frame.grid_columnconfigure((0, 1), weight=1)
+        nav_frame.grid_columnconfigure(0, weight=1)
 
         tab_nav_defs = [
-            ("📋 Log",     "📋  Daily Log",     "#E74C3C"),
-            ("📊 Charts",  "📊  Charts",        "#3498DB"),
-            ("🤖 AI",      "🤖  AI Analysis",   "#9B59B6"),
-            ("🏃 Exercise","🏃  Exercise",       "#1ABC9C"),
-            ("📈 History", "📈  History",        "#E67E22"),
-            ("🍽️ Meals",   "🍽️  Meal Planner",  "#27AE60"),
-            ("⚙️ Goals",   "⚙️  Goals",          "#E91E63"),
-            ("❓ Q&A",     "❓  Nutrition Q&A",  "#00BCD4"),
+            ("📋  Daily Log",     "daily_log",     Colors.ACCENT_RED),
+            ("📊  Charts",        "charts",        Colors.ACCENT_GREEN),
+            ("🤖  AI Analysis",   "ai_analysis",   Colors.ACCENT_PURPLE),
+            ("🏃  Exercise",      "exercise",      Colors.ACCENT_CYAN),
+            ("📈  History",       "history",       Colors.ACCENT_ORANGE),
+            ("🍽️  Meal Planner",  "meal_planner",  Colors.ACCENT_GREEN),
+            ("⚙️  Goals Target",  "goals",         Colors.ACCENT_PINK),
+            ("❓  Nutrition Q&A",  "nutrition_qa",  Colors.ACCENT_PRIMARY),
         ]
 
-        for i, (label, tab_name, color) in enumerate(tab_nav_defs):
+        self.nav_buttons = {}
+        for i, (label, key, color) in enumerate(tab_nav_defs):
             btn = customtkinter.CTkButton(
                 nav_frame, text=label,
-                command=lambda tn=tab_name: self.tabview.set(tn),
-                fg_color=color, hover_color=Colors.SURFACE_HOVER,
-                corner_radius=8, height=30, width=80,
-                font=Fonts.tiny(), text_color=Colors.TEXT_WHITE,
+                command=lambda k=key: self.switch_tab(k),
+                fg_color="transparent", hover_color=Colors.SURFACE_HOVER,
+                border_width=0,
+                corner_radius=8, height=36,
+                font=Fonts.body_bold(), text_color=Colors.TEXT_SECONDARY,
+                anchor="w"
             )
-            btn.grid(row=i // 2, column=i % 2, padx=2, pady=2, sticky="ew")
+            self._setup_glow(btn, Colors.BORDER, color)
+            btn.grid(row=i, column=0, padx=4, pady=2, sticky="ew")
+            self.nav_buttons[key] = btn
 
         # ── Quick Actions ──
         customtkinter.CTkFrame(self.sidebar_frame, height=1, fg_color=Colors.BORDER).grid(
@@ -258,34 +263,34 @@ class SmartCalorieTrackerApp(customtkinter.CTk):
 
         self.water_btn = customtkinter.CTkButton(
             actions_frame, text="💧 Add Water", command=self.quick_add_water,
-            fg_color=Colors.ACCENT_CYAN, hover_color="#2BB5A5",
+            fg_color=Colors.SURFACE_LIGHT, hover_color=Colors.SURFACE_HOVER,
             corner_radius=10, height=32, font=Fonts.small_bold(),
-            text_color=Colors.TEXT_WHITE,
-            border_color="#5BE8D5", border_width=1
+            text_color=Colors.TEXT_PRIMARY,
+            border_color=Colors.BORDER, border_width=1
         )
         self.water_btn.grid(row=0, column=0, pady=3, sticky="ew")
-        self._setup_glow(self.water_btn, Colors.ACCENT_CYAN, "#5BE8D5")
+        self._setup_glow(self.water_btn, Colors.BORDER, Colors.ACCENT_CYAN)
 
         self.exercise_btn = customtkinter.CTkButton(
             actions_frame, text="🏃 Exercise",
-            command=lambda: self.tabview.set("🏃  Exercise"),
-            fg_color=Colors.ACCENT_PURPLE, hover_color="#A57AE8",
+            command=lambda: self.switch_tab("exercise"),
+            fg_color=Colors.SURFACE_LIGHT, hover_color=Colors.SURFACE_HOVER,
             corner_radius=10, height=32, font=Fonts.small_bold(),
-            text_color=Colors.TEXT_WHITE,
-            border_color="#D4A5FF", border_width=1
+            text_color=Colors.TEXT_PRIMARY,
+            border_color=Colors.BORDER, border_width=1
         )
         self.exercise_btn.grid(row=1, column=0, pady=2, sticky="ew")
-        self._setup_glow(self.exercise_btn, Colors.ACCENT_PURPLE, "#D4A5FF")
+        self._setup_glow(self.exercise_btn, Colors.BORDER, Colors.ACCENT_PURPLE)
 
         self.export_btn = customtkinter.CTkButton(
             actions_frame, text="📊 Export", command=self.export_data,
             fg_color=Colors.SURFACE_LIGHT, hover_color=Colors.SURFACE_HOVER,
             corner_radius=10, height=32, font=Fonts.small_bold(),
             text_color=Colors.TEXT_PRIMARY,
-            border_color=Colors.BORDER_ACCENT, border_width=1
+            border_color=Colors.BORDER, border_width=1
         )
         self.export_btn.grid(row=2, column=0, pady=2, sticky="ew")
-        self._setup_glow(self.export_btn, Colors.SURFACE_LIGHT, Colors.ACCENT_PRIMARY)
+        self._setup_glow(self.export_btn, Colors.BORDER, Colors.ACCENT_PRIMARY)
 
         # ── Settings ──
         self.setup_settings_area()
@@ -346,15 +351,13 @@ class SmartCalorieTrackerApp(customtkinter.CTk):
         self.main_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         self.main_frame.grid(row=0, column=1, sticky="nsew", padx=(0, Layout.PAD_LG), pady=Layout.PAD_LG)
         self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure(1, weight=1)
+        self.main_frame.grid_rowconfigure(0, weight=1)
 
-        self.setup_top_input_area()
         self.setup_tabs()
         self.setup_status_bar()
 
-    def setup_top_input_area(self):
-        top_frame = create_styled_card(self.main_frame)
-        top_frame.grid(row=0, column=0, sticky="ew", pady=(0, Layout.PAD_SM))
+    def create_food_input_card(self, parent_frame):
+        top_frame = create_styled_card(parent_frame)
         top_frame.grid_columnconfigure(0, weight=1)
 
         # ── Main Input Row ──
@@ -416,46 +419,68 @@ class SmartCalorieTrackerApp(customtkinter.CTk):
             )
             btn.pack(side="left", padx=3)
 
+        return top_frame
+
     def setup_tabs(self):
-        self.tabview = customtkinter.CTkTabview(
-            self.main_frame,
-            fg_color=Colors.SURFACE,
-            segmented_button_fg_color=Colors.BG_SIDEBAR,
-            segmented_button_selected_color=Colors.ACCENT_PRIMARY,
-            segmented_button_selected_hover_color="#4A90D9",
-            segmented_button_unselected_color=Colors.BG_SIDEBAR,
-            segmented_button_unselected_hover_color=Colors.SURFACE_HOVER,
-            text_color=Colors.TEXT_PRIMARY,
-            border_color=Colors.BORDER,
-            border_width=1,
-            corner_radius=Layout.CORNER_RADIUS
-        )
-        self.tabview.grid(row=1, column=0, sticky="nsew", pady=(0, Layout.PAD_SM))
+        self.tab_container = customtkinter.CTkFrame(self.main_frame, fg_color="transparent")
+        self.tab_container.grid(row=0, column=0, sticky="nsew", pady=(0, Layout.PAD_SM))
+        self.tab_container.grid_columnconfigure(0, weight=1)
+        self.tab_container.grid_rowconfigure(0, weight=1)
+
+        self.tabs = {}
+        tab_keys = [
+            "daily_log",
+            "charts",
+            "ai_analysis",
+            "exercise",
+            "history",
+            "meal_planner",
+            "goals",
+            "nutrition_qa"
+        ]
+
+        for key in tab_keys:
+            frame = customtkinter.CTkFrame(self.tab_container, fg_color="transparent")
+            frame.grid(row=0, column=0, sticky="nsew")
+            frame.grid_columnconfigure(0, weight=1)
+            self.tabs[key] = frame
 
         # Initialize Tab Classes
-        self.tabview.add("📋  Daily Log")
-        self.daily_log_tab = DailyLogTab(self.tabview.tab("📋  Daily Log"), self)
+        self.daily_log_tab = DailyLogTab(self.tabs["daily_log"], self)
+        self.charts_tab = ChartsTab(self.tabs["charts"], self)
+        self.ai_analysis_tab = AIAnalysisTab(self.tabs["ai_analysis"], self)
+        self.exercise_tab = ExerciseTab(self.tabs["exercise"], self)
+        self.history_tab = HistoryTab(self.tabs["history"], self)
+        self.meal_planner_tab = MealPlannerTab(self.tabs["meal_planner"], self)
+        self.goals_tab = GoalsTab(self.tabs["goals"], self)
+        self.nutrition_qa_tab = NutritionQATab(self.tabs["nutrition_qa"], self)
 
-        self.tabview.add("📊  Charts")
-        self.charts_tab = ChartsTab(self.tabview.tab("📊  Charts"), self)
+        self.switch_tab("daily_log")
 
-        self.tabview.add("🤖  AI Analysis")
-        self.ai_analysis_tab = AIAnalysisTab(self.tabview.tab("🤖  AI Analysis"), self)
-
-        self.tabview.add("🏃  Exercise")
-        self.exercise_tab = ExerciseTab(self.tabview.tab("🏃  Exercise"), self)
-
-        self.tabview.add("📈  History")
-        self.history_tab = HistoryTab(self.tabview.tab("📈  History"), self)
-
-        self.tabview.add("🍽️  Meal Planner")
-        self.meal_planner_tab = MealPlannerTab(self.tabview.tab("🍽️  Meal Planner"), self)
-
-        self.tabview.add("⚙️  Goals")
-        self.goals_tab = GoalsTab(self.tabview.tab("⚙️  Goals"), self)
-
-        self.tabview.add("❓  Nutrition Q&A")
-        self.nutrition_qa_tab = NutritionQATab(self.tabview.tab("❓  Nutrition Q&A"), self)
+    def switch_tab(self, tab_key):
+        self.active_tab_key = tab_key
+        
+        # Hide all tab frames
+        for key, frame in self.tabs.items():
+            frame.grid_remove()
+            
+        # Show active tab frame
+        self.tabs[tab_key].grid()
+        
+        for key, btn in self.nav_buttons.items():
+            if key == tab_key:
+                btn.configure(
+                    fg_color=Colors.SURFACE_LIGHT,
+                    border_color=Colors.ACCENT_PRIMARY,
+                    border_width=1,
+                    text_color=Colors.TEXT_PRIMARY
+                )
+            else:
+                btn.configure(
+                    fg_color="transparent",
+                    border_width=0,
+                    text_color=Colors.TEXT_SECONDARY
+                )
 
     def setup_status_bar(self):
         self.status_frame = customtkinter.CTkFrame(
@@ -488,7 +513,22 @@ class SmartCalorieTrackerApp(customtkinter.CTk):
                 pass
         def on_leave(e):
             try:
-                btn.configure(border_color=normal_color, border_width=1)
+                # If this button is a navigation menu item and is currently active, keep active accent border
+                if hasattr(self, 'active_tab_key') and hasattr(self, 'nav_buttons') and btn in self.nav_buttons.values():
+                    btn_key = next((k for k, b in self.nav_buttons.items() if b == btn), None)
+                    if btn_key == self.active_tab_key:
+                        btn.configure(border_color=Colors.ACCENT_PRIMARY, border_width=1)
+                        return
+                    else:
+                        btn.configure(border_width=0)
+                        return
+                
+                # For non-sidebar buttons or default inactive buttons
+                fg = btn.cget("fg_color")
+                if fg == "transparent":
+                    btn.configure(border_width=0)
+                else:
+                    btn.configure(border_color=normal_color, border_width=1)
             except Exception:
                 pass
         btn.bind("<Enter>", on_enter)

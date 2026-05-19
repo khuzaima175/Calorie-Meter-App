@@ -84,12 +84,13 @@ class MealPlannerTab:
         # Generate Button (animated pill style)
         self.generate_plan_btn = customtkinter.CTkButton(
             options_frame, text="✨  Generate Plan", command=self.generate_meal_plan,
-            fg_color=Colors.ACCENT_GREEN, hover_color="#2EA043",
-            corner_radius=20, height=44, width=200,
-            font=Fonts.body_bold(), text_color=Colors.TEXT_WHITE,
-            border_color="#5FE87D", border_width=2
+            fg_color=Colors.SURFACE_LIGHT, hover_color=Colors.SURFACE_HOVER,
+            corner_radius=10, height=44, width=200,
+            font=Fonts.body_bold(), text_color=Colors.TEXT_PRIMARY,
+            border_color=Colors.BORDER, border_width=1
         )
         self.generate_plan_btn.pack(side="right")
+        self.app._setup_glow(self.generate_plan_btn, Colors.BORDER, Colors.ACCENT_GREEN)
 
         # ── Result Card ──
         result_card = create_styled_card(self.tab)

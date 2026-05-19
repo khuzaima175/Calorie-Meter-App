@@ -86,12 +86,13 @@ class ExerciseTab:
         # Submit Button (glowing pill style)
         self.add_exercise_button = customtkinter.CTkButton(
             add_card, text="✚  Log Exercise", command=self.add_exercise,
-            fg_color=Colors.ACCENT_CYAN, hover_color="#2BB5A5",
-            corner_radius=20, height=44, width=200,
-            font=Fonts.body_bold(), text_color=Colors.TEXT_WHITE,
-            border_color="#5BE8D5", border_width=2
+            fg_color=Colors.SURFACE_LIGHT, hover_color=Colors.SURFACE_HOVER,
+            corner_radius=10, height=44, width=200,
+            font=Fonts.body_bold(), text_color=Colors.TEXT_PRIMARY,
+            border_color=Colors.BORDER, border_width=1
         )
         self.add_exercise_button.grid(row=8, column=0, columnspan=2, padx=Layout.PAD_LG, pady=(0, Layout.PAD_XL))
+        self.app._setup_glow(self.add_exercise_button, Colors.BORDER, Colors.ACCENT_CYAN)
 
         # ── Exercise Log ──
         self.exercise_log_frame = create_scrollable_frame(

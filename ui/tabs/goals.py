@@ -171,10 +171,10 @@ class GoalsTab:
 
         self.update_goals_button = customtkinter.CTkButton(
             btn_frame, text="💾  Save Goals", command=self.update_goals,
-            fg_color=Colors.ACCENT_GREEN, hover_color="#2EA043",
-            corner_radius=20, height=48, width=220,
+            fg_color=Colors.BTN_PRIMARY, hover_color=Colors.BTN_PRIMARY_HOVER,
+            corner_radius=10, height=48, width=220,
             font=Fonts.h3(), text_color=Colors.TEXT_WHITE,
-            border_color="#5FE87D", border_width=2
+            border_color=Colors.BORDER, border_width=1
         )
         self.update_goals_button.pack(anchor="center")
 
@@ -191,10 +191,10 @@ class GoalsTab:
             self.app.food_preferences = self.food_pref_entry.get()
 
             # Visual feedback - brief button color flash
-            self.update_goals_button.configure(text="✅  Goals Saved!", fg_color=Colors.ACCENT_CYAN)
+            self.update_goals_button.configure(text="✅  Goals Saved!", fg_color=Colors.ACCENT_PRIMARY)
             self.update_goals_button.after(
                 1500,
-                lambda: self.update_goals_button.configure(text="💾  Save Goals", fg_color=Colors.ACCENT_GREEN)
+                lambda: self.update_goals_button.configure(text="💾  Save Goals", fg_color=Colors.BTN_PRIMARY)
             )
 
             self.app.refresh_data()

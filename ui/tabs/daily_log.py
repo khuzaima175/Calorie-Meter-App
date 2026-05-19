@@ -18,7 +18,7 @@ class DailyLogTab:
 
     def setup_ui(self):
         self.tab.grid_columnconfigure(0, weight=1)
-        self.tab.grid_rowconfigure(2, weight=1)
+        self.tab.grid_rowconfigure(3, weight=1)
 
         # ── Gradient Header ──
         self.header = create_gradient_header(
@@ -26,11 +26,15 @@ class DailyLogTab:
         )
         self.header.grid(row=0, column=0, sticky="ew", padx=Layout.PAD_MD, pady=(Layout.PAD_MD, Layout.PAD_SM))
 
+        # ── Food Input Card ──
+        self.food_input_card = self.app.create_food_input_card(self.tab)
+        self.food_input_card.grid(row=1, column=0, sticky="ew", padx=Layout.PAD_MD, pady=(0, Layout.PAD_SM))
+
         # ── Hero Dashboard with Rings ──
         self.hero_frame = customtkinter.CTkFrame(self.tab, fg_color=Colors.SURFACE,
                                                   border_color=Colors.BORDER, border_width=1,
                                                   corner_radius=Layout.CORNER_RADIUS)
-        self.hero_frame.grid(row=1, column=0, sticky="ew", padx=Layout.PAD_MD, pady=(0, Layout.PAD_SM))
+        self.hero_frame.grid(row=2, column=0, sticky="ew", padx=Layout.PAD_MD, pady=(0, Layout.PAD_SM))
         self.hero_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
         # Greeting & Tip row
@@ -61,7 +65,7 @@ class DailyLogTab:
         self.ring_widgets = {}
         for i, (title, icon, accent, bg) in enumerate(ring_defs):
             card_frame = customtkinter.CTkFrame(
-                self.hero_frame, fg_color=bg,
+                self.hero_frame, fg_color=Colors.SURFACE,
                 border_color=Colors.BORDER, border_width=1,
                 corner_radius=Layout.CORNER_RADIUS
             )
@@ -69,7 +73,7 @@ class DailyLogTab:
             card_frame.grid_columnconfigure(0, weight=1)
 
             # Hover highlight
-            add_hover_highlight(card_frame, normal_fg=bg, hover_fg=Colors.SURFACE_HOVER,
+            add_hover_highlight(card_frame, normal_fg=Colors.SURFACE, hover_fg=Colors.SURFACE_LIGHT,
                                 hover_border=accent)
 
             # Title
@@ -98,7 +102,7 @@ class DailyLogTab:
         self.food_entries_frame = create_scrollable_frame(
             self.tab, label_text="  Your Meals Today"
         )
-        self.food_entries_frame.grid(row=2, column=0, sticky="nsew", padx=Layout.PAD_MD, pady=(0, Layout.PAD_MD))
+        self.food_entries_frame.grid(row=3, column=0, sticky="nsew", padx=Layout.PAD_MD, pady=(0, Layout.PAD_MD))
         self.food_entries_frame.grid_columnconfigure(0, weight=1)
 
     def _tk_color(self, hex_color):
@@ -144,19 +148,23 @@ class DailyLogTab:
         meals = self.app.db.get_meals_by_date(self.app.current_date)
         if not meals:
             empty_frame = customtkinter.CTkFrame(self.food_entries_frame, fg_color="transparent")
-            empty_frame.pack(fill="x", pady=60)
+            empty_frame.grid(row=0, column=0, sticky="nsew", pady=60)
+            empty_frame.grid_columnconfigure(0, weight=1)
+
             customtkinter.CTkLabel(
                 empty_frame, text="🍽️",
                 font=customtkinter.CTkFont(size=48)
-            ).pack()
+            ).grid(row=0, column=0, pady=(0, Layout.PAD_SM))
+
             customtkinter.CTkLabel(
                 empty_frame, text="No meals logged yet",
                 font=Fonts.h3(), text_color=Colors.TEXT_SECONDARY
-            ).pack(pady=(Layout.PAD_SM, 0))
+            ).grid(row=1, column=0, pady=(0, 4))
+
             customtkinter.CTkLabel(
                 empty_frame, text="Use the input above to start tracking your meals!",
                 font=Fonts.small(), text_color=Colors.TEXT_TERTIARY
-            ).pack(pady=4)
+            ).grid(row=2, column=0, pady=4)
             return
 
         # Load Icons

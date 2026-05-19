@@ -428,26 +428,27 @@ class CircularProgressRing(tk.Canvas):
         animate_value(self, start, target, duration_ms, _update)
 
 
-def create_gradient_header(parent, text, icon, color1, color2):
-    """Creates a visually distinct gradient-like header strip for a tab."""
+def create_gradient_header(parent, text, icon, color1=None, color2=None):
+    """Creates a visually distinct modern header strip for a tab."""
     header = customtkinter.CTkFrame(
-        parent, fg_color=color1, corner_radius=Layout.CORNER_RADIUS,
-        height=52
+        parent, fg_color=Colors.SURFACE, border_color=Colors.BORDER, border_width=1,
+        corner_radius=Layout.CORNER_RADIUS, height=52
     )
+    header.pack_propagate(False)
     header.grid_propagate(False)
-    header.grid_columnconfigure(0, weight=1)
 
-    # Accent overlay on the right half
-    overlay = customtkinter.CTkFrame(header, fg_color=color2, corner_radius=0, width=0)
-    overlay.place(relx=0.6, rely=0, relwidth=0.4, relheight=1.0)
-
-    inner = customtkinter.CTkFrame(header, fg_color="transparent")
-    inner.place(relx=0, rely=0, relwidth=1.0, relheight=1.0)
+    # Instead of a large colorful overlay, we add an elegant vertical accent line
+    accent_color = color1 or Colors.ACCENT_PRIMARY
+    accent_strip = customtkinter.CTkFrame(
+        header, fg_color=accent_color, corner_radius=2, width=4, height=32
+    )
+    accent_strip.pack(side="left", padx=(12, 0), pady=10)
+    accent_strip.pack_propagate(False)
 
     customtkinter.CTkLabel(
-        inner, text=f"{icon}  {text}",
-        font=Fonts.h2(), text_color=Colors.TEXT_WHITE, anchor="w"
-    ).pack(side="left", padx=Layout.PAD_LG, pady=Layout.PAD_SM)
+        header, text=f"{icon}  {text}",
+        font=Fonts.h2(), text_color=Colors.TEXT_PRIMARY, anchor="w"
+    ).pack(side="left", padx=(12, 12), pady=10)
 
     return header
 

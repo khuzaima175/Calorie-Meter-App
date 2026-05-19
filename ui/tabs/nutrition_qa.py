@@ -77,12 +77,13 @@ class NutritionQATab:
         # Animated ask button
         self.qa_ask_button = customtkinter.CTkButton(
             btn_frame, text="🔍  Ask Gemini", command=self.get_nutrition_qa,
-            fg_color=Colors.ACCENT_CYAN, hover_color="#2BB5A5",
-            corner_radius=20, height=42, width=180,
-            font=Fonts.body_bold(), text_color=Colors.TEXT_WHITE,
-            border_color="#5BE8D5", border_width=2
+            fg_color=Colors.SURFACE_LIGHT, hover_color=Colors.SURFACE_HOVER,
+            corner_radius=10, height=42, width=180,
+            font=Fonts.body_bold(), text_color=Colors.TEXT_PRIMARY,
+            border_color=Colors.BORDER, border_width=1
         )
         self.qa_ask_button.pack(side="right")
+        self.app._setup_glow(self.qa_ask_button, Colors.BORDER, Colors.ACCENT_CYAN)
 
         # ── Response Card ──
         response_card = create_styled_card(self.tab)

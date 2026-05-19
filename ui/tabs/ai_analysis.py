@@ -65,14 +65,14 @@ class AIAnalysisTab:
         # Glowing ask button
         self.ai_ask_button = customtkinter.CTkButton(
             btn_frame, text="✨  Ask Gemini", command=self.get_ai_analysis,
-            fg_color=Colors.ACCENT_PURPLE, hover_color="#A57AE8",
-            corner_radius=20, height=42, width=180,
-            font=Fonts.body_bold(), text_color=Colors.TEXT_WHITE,
-            border_color="#D4A5FF", border_width=2
+            fg_color=Colors.SURFACE_LIGHT, hover_color=Colors.SURFACE_HOVER,
+            corner_radius=10, height=42, width=180,
+            font=Fonts.body_bold(), text_color=Colors.TEXT_PRIMARY,
+            border_color=Colors.BORDER, border_width=1
         )
         self.ai_ask_button.pack(side="right")
         # Add subtle glow animation on hover
-        self._setup_button_glow(self.ai_ask_button, Colors.ACCENT_PURPLE, "#D4A5FF")
+        self._setup_button_glow(self.ai_ask_button, Colors.BORDER, Colors.ACCENT_PURPLE)
 
         # ── Response Card ──
         response_card = create_styled_card(self.tab)
