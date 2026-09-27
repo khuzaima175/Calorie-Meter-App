@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { initDatabase, getTodayString } from './services/databaseService';
 import { useProfileStore } from './stores/useProfileStore';
 import { useNutritionStore } from './stores/useNutritionStore';
@@ -79,7 +80,11 @@ function AppBootstrapper() {
 }
 
 export default function App() {
-  return <AppBootstrapper />;
+  return (
+    <SafeAreaProvider>
+      <AppBootstrapper />
+    </SafeAreaProvider>
+  );
 }
 
 const styles = StyleSheet.create({

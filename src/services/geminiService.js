@@ -2,9 +2,13 @@
 // Gemini 3.7 Flash Nutritionist & Vision Engine
 // Features 15 req/min client-side rolling window rate-limiter
 
-const API_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY || '';
 const PRIMARY_MODEL = 'gemini-3.7-flash';
 const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+
+function getApiKey() {
+  const key = process.env.EXPO_PUBLIC_GEMINI_KEY || '';
+  return key.trim();
+}
 
 // Rolling window rate limiter (max 15 requests per 60 seconds)
 class RateLimiter {
@@ -38,7 +42,8 @@ const rateLimiter = new RateLimiter(15, 60000);
  * Core caller for Gemini REST API with fallback and JSON parsing
  */
 async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODEL) {
-  if (!API_KEY || API_KEY.startsWith('AIzaSy_REPLACE')) {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.startsWith('AIzaSy_REPLACE')) {
     throw new Error('Please set your Gemini API key in the .env file (EXPO_PUBLIC_GEMINI_KEY).');
   }
 
@@ -49,7 +54,7 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
 
   rateLimiter.recordRequest();
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const body = {
     contents,
