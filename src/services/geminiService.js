@@ -2,7 +2,6 @@ import { useProfileStore } from '../stores/useProfileStore';
 
 const PRIMARY_MODEL = 'gemini-3.7-flash';
 const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
-const DEFAULT_API_KEY = 'AIzaSyBDwHd9bFqVqEhgBJvhT-5maItKSYXAOng';
 
 export function getApiKey() {
   try {
@@ -17,7 +16,7 @@ export function getApiKey() {
     return envKey.trim();
   }
 
-  return DEFAULT_API_KEY;
+  return '';
 }
 
 // Rolling window rate limiter (max 15 requests per 60 seconds)
