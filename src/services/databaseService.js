@@ -621,3 +621,22 @@ export async function resetDatabaseToDemo() {
   await migrateDatabase(db);
   await seedDemoDataIfEmpty();
 }
+
+/**
+ * Clears all meal logs, workout history, and water intake to start from a completely clean slate.
+ */
+export async function clearAllLogs() {
+  if (IS_WEB || !dbInstance) {
+    webStore.meals = [];
+    webStore.exercises = [];
+    webStore.water_intake = [];
+    saveWebStore();
+    return;
+  }
+  const db = await getDB();
+  await db.execAsync(`
+    DELETE FROM meals;
+    DELETE FROM exercises;
+    DELETE FROM water_intake;
+  `);
+}

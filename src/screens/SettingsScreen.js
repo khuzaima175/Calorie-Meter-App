@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useProfileStore, calculateMetabolism } from '../stores/useProfileStore';
 import { useNutritionStore } from '../stores/useNutritionStore';
-import { resetDatabaseToDemo } from '../services/databaseService';
+import { resetDatabaseToDemo, clearAllLogs } from '../services/databaseService';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import Card from '../components/Card';
@@ -122,6 +122,26 @@ export default function SettingsScreen() {
             await refreshNutrition();
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
             Alert.alert('Success', 'Demo data reloaded.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearAllLogs = () => {
+    Alert.alert(
+      'Clear All Logs',
+      'Are you sure you want to delete all meal logs, workout history, and water intake? Your profile goals will be preserved.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All Logs',
+          style: 'destructive',
+          onPress: async () => {
+            await clearAllLogs();
+            await refreshNutrition();
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+            Alert.alert('Logs Cleared', 'All logs have been removed. You have a fresh, clean slate!');
           },
         },
       ]
@@ -375,6 +395,20 @@ export default function SettingsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
+
+          <View style={styles.actionDivider} />
+
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={handleClearAllLogs}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionLeft}>
+              <Ionicons name="trash-outline" size={20} color={colors.carb} />
+              <Text style={[styles.actionText, { color: colors.carb }]}>Clear All Logs (Start From Scratch)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
         </Card>
 
         {/* Medical Disclaimer Footer */}
@@ -556,6 +590,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     marginLeft: 10,
+  },
+  actionDivider: {
+    height: 1,
+    backgroundColor: colors.cardBorder,
+    marginVertical: 8,
   },
   disclaimerContainer: {
     alignItems: 'center',
