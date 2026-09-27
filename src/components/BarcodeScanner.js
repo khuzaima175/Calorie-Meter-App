@@ -76,7 +76,10 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
           barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
         }}
         onBarcodeScanned={scanned || isProcessing ? undefined : handleBarcodeScanned}
-      >
+      />
+
+      {/* Overlay Layer */}
+      <View style={styles.overlayContainer} pointerEvents="box-none">
         {/* Top Controls */}
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -99,7 +102,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
         </View>
 
         {/* Viewfinder Frame */}
-        <View style={styles.frameContainer}>
+        <View style={styles.frameContainer} pointerEvents="none">
           <View style={styles.targetFrame}>
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
@@ -148,7 +151,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
             </TouchableOpacity>
           )}
         </View>
-      </CameraView>
+      </View>
     </View>
   );
 }
@@ -159,7 +162,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: radius.lg,
     overflow: 'hidden',
+    position: 'relative',
     minHeight: 460,
+  },
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    backgroundColor: 'transparent',
   },
   centerContainer: {
     flex: 1,

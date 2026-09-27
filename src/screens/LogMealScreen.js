@@ -195,27 +195,33 @@ export default function LogMealScreen({ navigation }) {
         </View>
 
         {/* 5-Tab Selector Pills */}
-        <View style={styles.tabBar}>
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-                onPress={() => handleTabChange(tab.key)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={tab.icon}
-                  size={16}
-                  color={isActive ? colors.textInverse : colors.textSecondary}
-                />
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.tabBarContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabScrollContent}
+          >
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+                  onPress={() => handleTabChange(tab.key)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={tab.icon}
+                    size={16}
+                    color={isActive ? colors.textInverse : colors.textSecondary}
+                  />
+                  <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* Processing Indicator Overlay */}
@@ -447,31 +453,35 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.cardBackground,
-    borderRadius: radius.lg,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+  tabBarContainer: {
     marginBottom: 14,
   },
+  tabScrollContent: {
+    paddingRight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   tabBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: radius.md,
+    paddingVertical: 9,
+    paddingHorizontal: 15,
+    borderRadius: radius.full,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    marginRight: 8,
   },
   tabBtnActive: {
     backgroundColor: colors.sageBright,
+    borderColor: colors.sageBright,
   },
   tabText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textSecondary,
-    marginLeft: 4,
+    marginLeft: 6,
   },
   tabTextActive: {
     color: colors.textInverse,

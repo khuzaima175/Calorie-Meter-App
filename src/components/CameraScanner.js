@@ -101,7 +101,10 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         facing="back"
         enableTorch={torch}
         ref={cameraRef}
-      >
+      />
+
+      {/* Overlay Layer */}
+      <View style={styles.overlayContainer} pointerEvents="box-none">
         {/* Top Controls Overlay */}
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -122,7 +125,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         </View>
 
         {/* Center Target Frame */}
-        <View style={styles.frameContainer}>
+        <View style={styles.frameContainer} pointerEvents="none">
           <View style={styles.scanTargetFrame}>
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
@@ -159,7 +162,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
           <View style={styles.placeholderBtn} />
         </View>
-      </CameraView>
+      </View>
     </View>
   );
 }
@@ -170,7 +173,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: radius.lg,
     overflow: 'hidden',
+    position: 'relative',
     minHeight: 460,
+  },
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    backgroundColor: 'transparent',
   },
   centerContainer: {
     flex: 1,

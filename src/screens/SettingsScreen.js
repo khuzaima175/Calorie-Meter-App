@@ -60,6 +60,10 @@ export default function SettingsScreen() {
   const [waterMl, setWaterMl] = useState(String(goals?.water_ml || 2500));
   const [exerciseMins, setExerciseMins] = useState(String(goals?.exercise_minutes || 30));
 
+  // Gemini API Key State
+  const [apiKey, setApiKey] = useState(profile?.custom_api_key || '');
+  const [showApiKey, setShowApiKey] = useState(false);
+
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSaveProfile = async (autoRecalc = false) => {
@@ -106,6 +110,23 @@ export default function SettingsScreen() {
     });
 
     Alert.alert('Goals Updated', 'Your nutrition and fitness targets have been saved.');
+  };
+
+  const handleSaveApiKey = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    const updatedProfile = {
+      ...(profile || {}),
+      name: name.trim() || 'Explorer',
+      gender,
+      age: Number(age) || 25,
+      weight_kg: Number(weightKg) || 70,
+      height_cm: Number(heightCm) || 175,
+      activity_level: activityLevel,
+      goal_type: goalType,
+      custom_api_key: apiKey.trim(),
+    };
+    await saveProfile(updatedProfile, false);
+    Alert.alert('API Key Saved', 'Your Gemini API key has been saved and is now active for all AI features.');
   };
 
   const handleResetDemoData = () => {
@@ -381,6 +402,47 @@ export default function SettingsScreen() {
           />
         </Card>
 
+        {/* Section: Gemini AI Configuration */}
+        <Text style={styles.sectionHeading}>Gemini AI Configuration</Text>
+        <Card style={styles.card}>
+          <Text style={styles.cardDesc}>
+            Sage AI, Food Photo Vision, and Label OCR are powered by Google Gemini. You can paste your own Gemini API key below to override the default key.
+          </Text>
+
+          <View style={styles.apiKeyInputContainer}>
+            <View style={{ flex: 1 }}>
+              <Input
+                label="Gemini API Key"
+                value={apiKey}
+                onChangeText={setApiKey}
+                placeholder="AIzaSy..."
+                secureTextEntry={!showApiKey}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.keyEyeBtn}
+              onPress={() => setShowApiKey(!showApiKey)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={showApiKey ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <Button
+            title="Save Gemini API Key"
+            onPress={handleSaveApiKey}
+            variant="primary"
+            size="md"
+            style={{ marginTop: 8 }}
+          />
+        </Card>
+
         {/* Section 3: App & Data Tools */}
         <Text style={styles.sectionHeading}>Data & App Management</Text>
         <Card style={styles.card}>
@@ -542,6 +604,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 6,
     marginTop: 6,
+  },
+  cardDesc: {
+    ...typography.bodyMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  apiKeyInputContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  keyEyeBtn: {
+    position: 'absolute',
+    right: 12,
+    top: 36,
+    padding: 6,
   },
   optionList: {
     marginBottom: 12,

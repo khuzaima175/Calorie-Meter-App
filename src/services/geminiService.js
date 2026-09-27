@@ -1,13 +1,23 @@
-// src/services/geminiService.js
-// Gemini 3.7 Flash Nutritionist & Vision Engine
-// Features 15 req/min client-side rolling window rate-limiter
+import { useProfileStore } from '../stores/useProfileStore';
 
 const PRIMARY_MODEL = 'gemini-3.7-flash';
 const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+const DEFAULT_API_KEY = 'AIzaSyBDwHd9bFqVqEhgBJvhT-5maItKSYXAOng';
 
-function getApiKey() {
-  const key = process.env.EXPO_PUBLIC_GEMINI_KEY || '';
-  return key.trim();
+export function getApiKey() {
+  try {
+    const customKey = useProfileStore?.getState()?.profile?.custom_api_key;
+    if (customKey && customKey.trim() && !customKey.startsWith('AIzaSy_REPLACE')) {
+      return customKey.trim();
+    }
+  } catch {}
+
+  const envKey = process.env.EXPO_PUBLIC_GEMINI_KEY;
+  if (envKey && envKey.trim() && !envKey.startsWith('AIzaSy_REPLACE')) {
+    return envKey.trim();
+  }
+
+  return DEFAULT_API_KEY;
 }
 
 // Rolling window rate limiter (max 15 requests per 60 seconds)

@@ -100,7 +100,10 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
         facing="back"
         enableTorch={torch}
         ref={cameraRef}
-      >
+      />
+
+      {/* Overlay Layer */}
+      <View style={styles.overlayContainer} pointerEvents="box-none">
         {/* Top Controls */}
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -121,7 +124,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
         </View>
 
         {/* Vertical Nutrition Label Viewfinder Frame */}
-        <View style={styles.frameContainer}>
+        <View style={styles.frameContainer} pointerEvents="none">
           <View style={styles.labelFrame}>
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
@@ -162,7 +165,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
           <View style={styles.placeholderBtn} />
         </View>
-      </CameraView>
+      </View>
     </View>
   );
 }
@@ -173,7 +176,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: radius.lg,
     overflow: 'hidden',
+    position: 'relative',
     minHeight: 460,
+  },
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    backgroundColor: 'transparent',
   },
   centerContainer: {
     flex: 1,

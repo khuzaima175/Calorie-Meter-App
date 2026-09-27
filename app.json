@@ -17,7 +17,12 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#121214"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.tysom41.caloriemeterapp"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -39,6 +44,11 @@
       "expo-asset",
       "expo-font",
       "expo-sqlite"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d73f3c4e-915f-47dd-a07f-c05a2f50ad3a"
+      }
+    }
   }
 }

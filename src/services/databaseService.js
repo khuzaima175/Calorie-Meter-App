@@ -171,6 +171,15 @@ async function migrateDatabase(db) {
 
     await db.execAsync('PRAGMA user_version = 1');
   }
+
+  if (currentVersion < 2) {
+    try {
+      await db.execAsync(`
+        ALTER TABLE profile ADD COLUMN custom_api_key TEXT DEFAULT '';
+      `);
+    } catch {}
+    await db.execAsync('PRAGMA user_version = 2');
+  }
 }
 
 /**
@@ -502,6 +511,7 @@ export async function getProfile() {
       height_cm: 178,
       activity_level: 'moderate',
       goal_type: 'lose_weight',
+      custom_api_key: '',
     }
   );
 }
@@ -516,6 +526,7 @@ export async function updateProfile(profile) {
     height_cm: Number(profile.height_cm) || 175,
     activity_level: profile.activity_level || 'moderate',
     goal_type: profile.goal_type || 'maintain',
+    custom_api_key: profile.custom_api_key !== undefined ? profile.custom_api_key : '',
   };
 
   if (IS_WEB || !dbInstance) {
@@ -527,7 +538,7 @@ export async function updateProfile(profile) {
   const db = await getDB();
   return await db.runAsync(
     `UPDATE profile 
-     SET name = ?, gender = ?, age = ?, weight_kg = ?, height_cm = ?, activity_level = ?, goal_type = ?
+     SET name = ?, gender = ?, age = ?, weight_kg = ?, height_cm = ?, activity_level = ?, goal_type = ?, custom_api_key = ?
      WHERE id = 1`,
     [
       updated.name,
@@ -537,6 +548,7 @@ export async function updateProfile(profile) {
       updated.height_cm,
       updated.activity_level,
       updated.goal_type,
+      updated.custom_api_key,
     ]
   );
 }
