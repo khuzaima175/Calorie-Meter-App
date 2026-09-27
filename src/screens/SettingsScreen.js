@@ -64,7 +64,7 @@ export default function SettingsScreen() {
 
   const handleSaveProfile = async (autoRecalc = false) => {
     setIsSaving(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
 
     const updatedProfile = {
       name: name.trim() || 'Explorer',
@@ -94,7 +94,7 @@ export default function SettingsScreen() {
   };
 
   const handleSaveGoals = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
 
     await saveGoals({
       calories: Number(calories) || 2000,
@@ -120,7 +120,7 @@ export default function SettingsScreen() {
           onPress: async () => {
             await resetDatabaseToDemo();
             await refreshNutrition();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
             Alert.alert('Success', 'Demo data reloaded.');
           },
         },
@@ -140,7 +140,7 @@ export default function SettingsScreen() {
           onPress: async () => {
             await clearAllLogs();
             await refreshNutrition();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => { });
             Alert.alert('Logs Cleared', 'All logs have been removed. You have a fresh, clean slate!');
           },
         },
