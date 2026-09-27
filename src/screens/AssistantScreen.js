@@ -41,11 +41,21 @@ export default function AssistantScreen() {
 
   const [inputMessage, setInputMessage] = useState('');
   const scrollViewRef = useRef(null);
+  const isUserNearBottom = useRef(true);
 
-  // Auto-scroll to bottom on new message
-  useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  }, [messages, isGenerating, isGeneratingPlan, isReviewing]);
+  const handleScroll = (event) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 60;
+    const isAtBottom =
+      layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    isUserNearBottom.current = isAtBottom;
+  };
+
+  const scrollToBottom = (force = false) => {
+    if (force || isUserNearBottom.current) {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }
+  };
 
   const userContext = {
     profile,
@@ -59,26 +69,25 @@ export default function AssistantScreen() {
     },
   };
 
-  const scrollToBottom = () => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  };
-
   const handleSend = async () => {
     if (!inputMessage.trim() || isGenerating) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const msg = inputMessage.trim();
     setInputMessage('');
-    await sendUserMessage(msg, userContext, scrollToBottom);
+    scrollToBottom(true);
+    await sendUserMessage(msg, userContext, () => scrollToBottom(false));
   };
 
   const handleQuickPrompt = async (promptText) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await sendUserMessage(promptText, userContext, scrollToBottom);
+    scrollToBottom(true);
+    await sendUserMessage(promptText, userContext, () => scrollToBottom(false));
   };
 
   const handleGenerateReview = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await sendUserMessage('Please review my logged nutrition for today and give me feedback.', userContext, scrollToBottom);
+    scrollToBottom(true);
+    await sendUserMessage('Please review my logged nutrition for today and give me feedback.', userContext, () => scrollToBottom(false));
   };
 
   const handleGenerateMealPlan = async () => {
@@ -177,6 +186,8 @@ export default function AssistantScreen() {
           style={styles.messagesScroll}
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
           {messages.map((msg) => (
             <AIChatBubble
@@ -194,8 +205,8 @@ export default function AssistantScreen() {
             />
           )}
 
-          {/* Thinking Indicator */}
-          {(isGenerating || isGeneratingPlan || isReviewing) && (
+          {/* Plan/Review Processing Indicator (Only for background tasks, not chat) */}
+          {(isGeneratingPlan || isReviewing) && (
             <View style={styles.thinkingBox}>
               <View style={styles.avatarBoxSmall}>
                 <Ionicons name="leaf" size={12} color={colors.sageBright} />
@@ -205,9 +216,7 @@ export default function AssistantScreen() {
                 <Text style={styles.thinkingText}>
                   {isGeneratingPlan
                     ? 'Crafting your personalized meal plan...'
-                    : isReviewing
-                    ? 'Analyzing your daily nutrition...'
-                    : 'Sage is thinking...'}
+                    : 'Analyzing your daily nutrition...'}
                 </Text>
               </View>
             </View>
