@@ -1,8 +1,9 @@
 // src/navigation/TabNavigator.js
-// Custom sleek bottom tab navigator with center action button and haptic feedback
+// Custom sleek bottom tab navigator with center action button and safe area insets for Android & iOS
 
 import React, { useState, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -23,6 +24,7 @@ const TABS = [
 export default function TabNavigator() {
   const [activeRoute, setActiveRoute] = useState('Dashboard');
   const centerBtnScale = useRef(new Animated.Value(1)).current;
+  const insets = useSafeAreaInsets();
 
   const handleTabPress = (routeKey) => {
     Haptics.impactAsync(
@@ -72,13 +74,19 @@ export default function TabNavigator() {
     }
   };
 
+  // Ensure floating tab bar is lifted cleanly above Android 3-button system nav or iOS Home indicator
+  const bottomBarOffset = Math.max(
+    (insets.bottom || 0) + (Platform.OS === 'ios' ? 12 : 20),
+    Platform.OS === 'ios' ? 24 : 22
+  );
+
   return (
     <View style={styles.container}>
       {/* Active Screen View */}
       <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
 
       {/* Floating Bottom Tab Bar */}
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { bottom: bottomBarOffset }]}>
         {TABS.map((tab) => {
           const isActive = activeRoute === tab.key;
 
@@ -136,7 +144,6 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 24 : 12,
     left: 16,
     right: 16,
     height: 64,

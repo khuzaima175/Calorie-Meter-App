@@ -1,5 +1,5 @@
 // src/components/NutritionLabelScanner.js
-// Specialized camera viewfinder for Nutrition Facts label OCR scanning
+// Specialized fullscreen camera viewfinder for Nutrition Facts label OCR scanning
 
 import React, { useState, useRef } from 'react';
 import {
@@ -19,31 +19,43 @@ import { colors, radius, typography } from '../theme/colors';
 export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = false }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
+  const [facing, setFacing] = useState('back');
   const cameraRef = useRef(null);
 
   if (!permission) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={colors.sageBright} />
+        <Text style={styles.loadingText}>Initializing camera...</Text>
       </View>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.permissionContainer}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="document-text-outline" size={36} color={colors.sageBright} />
+      <View style={styles.permissionWrapper}>
+        <View style={styles.permissionCard}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="document-text" size={36} color={colors.sageBright} />
+          </View>
+          <Text style={styles.permTitle}>Camera Access Required</Text>
+          <Text style={styles.permSubtitle}>
+            Grant camera access to scan Nutrition Facts tables directly from food packages.
+          </Text>
+          <Button
+            title="Enable Camera"
+            onPress={requestPermission}
+            size="lg"
+            style={styles.permBtn}
+          />
+          <TouchableOpacity
+            style={styles.galleryFallbackBtn}
+            onPress={() => handlePickFromGallery()}
+          >
+            <Ionicons name="images-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.galleryFallbackText}>Or choose label photo from gallery</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.permTitle}>Camera Access Required</Text>
-        <Text style={styles.permSubtitle}>
-          Grant camera access to scan Nutrition Facts tables from food packaging.
-        </Text>
-        <Button
-          title="Enable Camera"
-          onPress={requestPermission}
-          style={styles.permBtn}
-        />
       </View>
     );
   }
@@ -95,32 +107,42 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
   return (
     <View style={styles.container}>
+      {/* Live Camera Feed */}
       <CameraView
         style={StyleSheet.absoluteFillObject}
-        facing="back"
+        facing={facing}
         enableTorch={torch}
         ref={cameraRef}
       />
 
-      {/* Overlay Layer */}
+      {/* Floating UI Overlay */}
       <View style={styles.overlayContainer} pointerEvents="box-none">
         {/* Top Controls */}
         <View style={styles.topBar}>
           <TouchableOpacity
-            style={styles.torchBtn}
+            style={[styles.circleControlBtn, torch && styles.torchActiveBtn]}
             onPress={() => setTorch(!torch)}
+            activeOpacity={0.7}
           >
             <Ionicons
               name={torch ? 'flash' : 'flash-off'}
               size={20}
-              color={torch ? '#FFD166' : colors.textPrimary}
+              color={torch ? '#FFD166' : '#FFFFFF'}
             />
           </TouchableOpacity>
 
           <View style={styles.tipsBadge}>
-            <Ionicons name="document-text-outline" size={13} color={colors.sageBright} />
-            <Text style={styles.tipsText}>Align Nutrition Facts label</Text>
+            <Ionicons name="document-text-outline" size={14} color={colors.sageBright} />
+            <Text style={styles.tipsText}>Align Nutrition Facts table</Text>
           </View>
+
+          <TouchableOpacity
+            style={styles.circleControlBtn}
+            onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="camera-reverse-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
 
         {/* Vertical Nutrition Label Viewfinder Frame */}
@@ -132,6 +154,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
             <View style={[styles.corner, styles.bottomRight]} />
 
             <View style={styles.frameHelper}>
+              <Ionicons name="scan" size={13} color={colors.sageBright} />
               <Text style={styles.frameHelperText}>Nutrition Facts</Text>
             </View>
           </View>
@@ -143,27 +166,36 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
             style={styles.galleryBtn}
             onPress={handlePickFromGallery}
             disabled={isProcessing}
+            activeOpacity={0.7}
           >
-            <Ionicons name="images-outline" size={24} color={colors.textPrimary} />
+            <Ionicons name="images-outline" size={24} color="#FFFFFF" />
+            <Text style={styles.actionLabel}>Gallery</Text>
           </TouchableOpacity>
 
           {/* Shutter Button */}
           <TouchableOpacity
-            style={styles.shutterOuter}
+            style={[styles.shutterOuter, isProcessing && styles.shutterOuterDisabled]}
             onPress={handleCapture}
             disabled={isProcessing}
             activeOpacity={0.8}
           >
-            <View style={styles.shutterInner}>
-              {isProcessing ? (
-                <ActivityIndicator size="small" color={colors.textInverse} />
-              ) : (
-                <Ionicons name="scan-outline" size={26} color={colors.textInverse} />
-              )}
+            <View style={styles.shutterRing}>
+              <View style={styles.shutterInner}>
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={colors.textInverse} />
+                ) : (
+                  <Ionicons name="scan-outline" size={28} color={colors.textInverse} />
+                )}
+              </View>
             </View>
           </TouchableOpacity>
 
-          <View style={styles.placeholderBtn} />
+          <View style={styles.aiBadgeWrapper}>
+            <View style={styles.aiBadge}>
+              <Ionicons name="document-text" size={18} color={colors.sageBright} />
+              <Text style={styles.actionLabel}>OCR AI</Text>
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -173,79 +205,113 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
-    borderRadius: radius.lg,
-    overflow: 'hidden',
+    backgroundColor: '#000000',
     position: 'relative',
-    minHeight: 460,
+    overflow: 'hidden',
   },
   overlayContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
-    backgroundColor: 'transparent',
+    zIndex: 10,
   },
   centerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 300,
+    backgroundColor: colors.background,
+    padding: 24,
   },
-  permissionContainer: {
+  loadingText: {
+    ...typography.bodyMuted,
+    marginTop: 12,
+  },
+  permissionWrapper: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    backgroundColor: colors.background,
+    padding: 20,
+  },
+  permissionCard: {
+    width: '100%',
     backgroundColor: colors.cardBackground,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   iconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: radius.full,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.sageSubtle,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 18,
   },
   permTitle: {
     ...typography.title2,
     marginBottom: 8,
+    textAlign: 'center',
   },
   permSubtitle: {
     ...typography.bodyMuted,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
+    lineHeight: 20,
   },
   permBtn: {
     width: '100%',
+  },
+  galleryFallbackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingVertical: 8,
+  },
+  galleryFallbackText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    marginLeft: 6,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 16,
   },
-  torchBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  circleControlBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(18, 18, 20, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  torchActiveBtn: {
+    backgroundColor: 'rgba(255, 209, 102, 0.25)',
+    borderColor: '#FFD166',
   },
   tipsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(18, 18, 20, 0.85)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(18, 18, 20, 0.75)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   tipsText: {
     fontSize: 12,
-    fontWeight: '500',
-    color: colors.textPrimary,
+    fontWeight: '600',
+    color: '#FFFFFF',
     marginLeft: 6,
   },
   frameContainer: {
@@ -254,92 +320,122 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   labelFrame: {
-    width: 240,
-    height: 320,
+    width: 250,
+    height: 330,
     position: 'relative',
     justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 16,
   },
   corner: {
     position: 'absolute',
-    width: 24,
-    height: 24,
+    width: 32,
+    height: 32,
     borderColor: colors.sageBright,
   },
   topLeft: {
     top: 0,
     left: 0,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-    borderTopLeftRadius: radius.sm,
+    borderTopWidth: 3.5,
+    borderLeftWidth: 3.5,
+    borderTopLeftRadius: radius.md,
   },
   topRight: {
     top: 0,
     right: 0,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-    borderTopRightRadius: radius.sm,
+    borderTopWidth: 3.5,
+    borderRightWidth: 3.5,
+    borderTopRightRadius: radius.md,
   },
   bottomLeft: {
     bottom: 0,
     left: 0,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-    borderBottomLeftRadius: radius.sm,
+    borderBottomWidth: 3.5,
+    borderLeftWidth: 3.5,
+    borderBottomLeftRadius: radius.md,
   },
   bottomRight: {
     bottom: 0,
     right: 0,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-    borderBottomRightRadius: radius.sm,
+    borderBottomWidth: 3.5,
+    borderRightWidth: 3.5,
+    borderBottomRightRadius: radius.md,
   },
   frameHelper: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   frameHelperText: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: '#FFFFFF',
+    marginLeft: 5,
     letterSpacing: 0.5,
   },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 32,
-    paddingBottom: 24,
+    paddingHorizontal: 36,
+    paddingBottom: 90,
   },
   galleryBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
+    width: 60,
+  },
+  actionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
   },
   shutterOuter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    borderColor: '#FFF',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  shutterOuterDisabled: {
+    opacity: 0.6,
+  },
+  shutterRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
   shutterInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     backgroundColor: colors.sageBright,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.sageBright,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  placeholderBtn: {
-    width: 48,
+  aiBadgeWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 60,
+  },
+  aiBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

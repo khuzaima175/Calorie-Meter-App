@@ -66,6 +66,10 @@ export default function LogMealScreen({ navigation }) {
   const [manualCarbs, setManualCarbs] = useState('');
   const [manualFat, setManualFat] = useState('');
 
+  const isCameraMode =
+    (activeTab === 'photo' || activeTab === 'label' || activeTab === 'barcode') &&
+    !analysisResult;
+
   const handleTabChange = (tabKey) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setActiveTab(tabKey);
@@ -83,7 +87,10 @@ export default function LogMealScreen({ navigation }) {
       const result = await analyzeFoodPhoto(base64, mimeType);
       setAnalysisResult(result);
     } catch (err) {
-      Alert.alert('Analysis Failed', err.message || 'Could not analyze photo. Please try again or type the meal.');
+      Alert.alert(
+        'Analysis Failed',
+        err.message || 'Could not analyze photo. Please try again or type the meal.'
+      );
       setCapturedImageUri(null);
     } finally {
       setIsProcessing(false);
@@ -94,7 +101,10 @@ export default function LogMealScreen({ navigation }) {
   // 2. Text Analysis Handler
   const handleAnalyzeText = async () => {
     if (!textDescription.trim()) {
-      Alert.alert('Empty Description', 'Please type what you ate (e.g. "Grilled chicken salad with avocado and olive oil dressing").');
+      Alert.alert(
+        'Empty Description',
+        'Please type what you ate (e.g. "Grilled chicken salad with avocado and olive oil dressing").'
+      );
       return;
     }
 
@@ -105,7 +115,10 @@ export default function LogMealScreen({ navigation }) {
       const result = await parseMealDescription(textDescription.trim());
       setAnalysisResult(result);
     } catch (err) {
-      Alert.alert('Parsing Failed', err.message || 'Could not calculate macros. Please try again.');
+      Alert.alert(
+        'Parsing Failed',
+        err.message || 'Could not calculate macros. Please try again.'
+      );
     } finally {
       setIsProcessing(false);
       setStatusMessage('');
@@ -122,7 +135,10 @@ export default function LogMealScreen({ navigation }) {
       const result = await analyzeNutritionLabel(base64, mimeType);
       setAnalysisResult(result);
     } catch (err) {
-      Alert.alert('OCR Failed', err.message || 'Could not read nutrition facts. Make sure label is in clear view.');
+      Alert.alert(
+        'OCR Failed',
+        err.message || 'Could not read nutrition facts. Make sure label is in clear view.'
+      );
       setCapturedImageUri(null);
     } finally {
       setIsProcessing(false);
@@ -142,7 +158,10 @@ export default function LogMealScreen({ navigation }) {
         setCapturedImageUri(result.image_uri);
       }
     } catch (err) {
-      Alert.alert('Product Not Found', `${err.message}\nYou can log it manually or scan the Nutrition Facts label.`);
+      Alert.alert(
+        'Product Not Found',
+        `${err.message}\nYou can log it manually or scan the Nutrition Facts label.`
+      );
     } finally {
       setIsProcessing(false);
       setStatusMessage('');
@@ -184,67 +203,101 @@ export default function LogMealScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Header Title */}
-        <View style={styles.header}>
-          <Text style={styles.titleText}>Log Nutrition</Text>
-          <Text style={styles.subtitleText}>
-            Snap a photo, scan a barcode, or describe your meal
-          </Text>
-        </View>
+    <SafeAreaView
+      style={[styles.safeArea, isCameraMode && styles.cameraSafeArea]}
+      edges={['top', 'left', 'right']}
+    >
+      <View style={[styles.container, isCameraMode && styles.cameraContainer]}>
+        {/* Top Header & Tab Pills Navigation */}
+        <View style={isCameraMode ? styles.floatingHeaderWrapper : styles.headerWrapper}>
+          {!isCameraMode && (
+            <View style={styles.header}>
+              <Text style={styles.titleText}>
+                {analysisResult ? 'Review Nutrition' : 'Log Nutrition'}
+              </Text>
+              <Text style={styles.subtitleText}>
+                {analysisResult
+                  ? 'Verify AI detected macronutrients and add to diary'
+                  : 'Snap a photo, scan a barcode, or describe your meal'}
+              </Text>
+            </View>
+          )}
 
-        {/* 5-Tab Selector Pills */}
-        <View style={styles.tabBarContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabScrollContent}
-          >
-            {TABS.map((tab) => {
-              const isActive = activeTab === tab.key;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-                  onPress={() => handleTabChange(tab.key)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={tab.icon}
-                    size={16}
-                    color={isActive ? colors.textInverse : colors.textSecondary}
-                  />
-                  <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          {/* 5-Tab Mode Selector Pills */}
+          {!analysisResult && (
+            <View style={[styles.tabBarContainer, isCameraMode && styles.cameraTabBarContainer]}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabScrollContent}
+              >
+                {TABS.map((tab) => {
+                  const isActive = activeTab === tab.key;
+                  return (
+                    <TouchableOpacity
+                      key={tab.key}
+                      style={[
+                        styles.tabBtn,
+                        isCameraMode && styles.cameraTabBtn,
+                        isActive && styles.tabBtnActive,
+                      ]}
+                      onPress={() => handleTabChange(tab.key)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={tab.icon}
+                        size={15}
+                        color={
+                          isActive
+                            ? colors.textInverse
+                            : isCameraMode
+                            ? '#FFFFFF'
+                            : colors.textSecondary
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.tabText,
+                          isCameraMode && styles.cameraTabText,
+                          isActive && styles.tabTextActive,
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
         </View>
 
         {/* Processing Indicator Overlay */}
         {isProcessing && (
           <View style={styles.processingOverlay}>
-            <ActivityIndicator size="large" color={colors.sageBright} />
-            <Text style={styles.processingText}>{statusMessage}</Text>
+            <View style={styles.processingCard}>
+              <ActivityIndicator size="large" color={colors.sageBright} />
+              <Text style={styles.processingTitle}>Analyzing with AI</Text>
+              <Text style={styles.processingText}>{statusMessage}</Text>
+            </View>
           </View>
         )}
 
-        {/* Main Content Area */}
+        {/* Main Viewport Content */}
         {analysisResult ? (
-          <FoodAnalysisResult
-            analysis={analysisResult}
-            imageUri={capturedImageUri}
-            onSave={handleSaveAnalysisResult}
-            onCancel={() => {
-              setAnalysisResult(null);
-              setCapturedImageUri(null);
-            }}
-          />
+          <View style={styles.resultContainer}>
+            <FoodAnalysisResult
+              analysis={analysisResult}
+              imageUri={capturedImageUri}
+              onSave={handleSaveAnalysisResult}
+              onCancel={() => {
+                setAnalysisResult(null);
+                setCapturedImageUri(null);
+              }}
+            />
+          </View>
         ) : (
-          <View style={styles.tabContent}>
+          <View style={[styles.tabContent, isCameraMode && styles.cameraTabContent]}>
             {/* TAB 1: PHOTO SCANNER */}
             {activeTab === 'photo' && (
               <CameraScanner
@@ -265,7 +318,8 @@ export default function LogMealScreen({ navigation }) {
                     <Text style={styles.cardTitle}>Describe Your Meal</Text>
                   </View>
                   <Text style={styles.cardSubtitle}>
-                    Mention foods and quantities in your own words. Gemini AI will calculate macros automatically.
+                    Mention foods and quantities in your own words. Gemini AI will calculate macros
+                    automatically.
                   </Text>
 
                   <Input
@@ -340,10 +394,7 @@ export default function LogMealScreen({ navigation }) {
                       return (
                         <TouchableOpacity
                           key={t.key}
-                          style={[
-                            styles.typePill,
-                            isSelected && styles.typePillSelected,
-                          ]}
+                          style={[styles.typePill, isSelected && styles.typePillSelected]}
                           onPress={() => setManualMealType(t.key)}
                         >
                           <Text
@@ -437,10 +488,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  cameraSafeArea: {
+    backgroundColor: '#000000',
+  },
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  cameraContainer: {
+    backgroundColor: '#000000',
+  },
+  headerWrapper: {
     paddingHorizontal: 16,
     paddingTop: 12,
+  },
+  floatingHeaderWrapper: {
+    position: 'absolute',
+    top: 8,
+    left: 0,
+    right: 0,
+    zIndex: 25,
+    paddingHorizontal: 12,
   },
   header: {
     marginBottom: 12,
@@ -454,10 +522,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   tabBarContainer: {
-    marginBottom: 14,
+    marginBottom: 12,
+  },
+  cameraTabBarContainer: {
+    backgroundColor: 'rgba(18, 18, 20, 0.75)',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    marginBottom: 0,
   },
   tabScrollContent: {
-    paddingRight: 16,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -465,13 +541,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 9,
-    paddingHorizontal: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: radius.full,
     backgroundColor: colors.cardBackground,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    marginRight: 8,
+    marginRight: 6,
+  },
+  cameraTabBtn: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
   },
   tabBtnActive: {
     backgroundColor: colors.sageBright,
@@ -481,16 +563,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.textSecondary,
-    marginLeft: 6,
+    marginLeft: 5,
+  },
+  cameraTabText: {
+    color: 'rgba(255, 255, 255, 0.85)',
   },
   tabTextActive: {
     color: colors.textInverse,
+    fontWeight: '700',
   },
   tabContent: {
     flex: 1,
+    paddingHorizontal: 16,
+  },
+  cameraTabContent: {
+    paddingHorizontal: 0,
+  },
+  resultContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 90,
   },
   scrollForm: {
-    paddingBottom: 90,
+    paddingBottom: 110,
+    paddingTop: 4,
   },
   textCard: {
     padding: 16,
@@ -575,16 +672,31 @@ const styles = StyleSheet.create({
   },
   processingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(18, 18, 20, 0.85)',
+    backgroundColor: 'rgba(10, 10, 12, 0.85)',
     zIndex: 99,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
-  processingText: {
-    ...typography.body,
+  processingCard: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: radius.xl,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    width: '85%',
+  },
+  processingTitle: {
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.textPrimary,
-    marginTop: 16,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  processingText: {
+    ...typography.caption,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });

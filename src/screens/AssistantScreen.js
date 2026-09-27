@@ -1,6 +1,3 @@
-// src/screens/AssistantScreen.js
-// AI Nutritionist & Meal Planning Assistant powered by Gemini 2.5 Flash
-
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -13,7 +10,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAIStore } from '../stores/useAIStore';
@@ -107,6 +104,13 @@ export default function AssistantScreen() {
       timestamp: new Date().toISOString(),
     });
   };
+
+  const insets = useSafeAreaInsets();
+  const bottomBarOffset = Math.max(
+    (insets.bottom || 0) + (Platform.OS === 'ios' ? 12 : 20),
+    Platform.OS === 'ios' ? 24 : 22
+  );
+  const bottomChatMargin = bottomBarOffset + 64 + 6;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -224,7 +228,7 @@ export default function AssistantScreen() {
         </ScrollView>
 
         {/* Bottom Chat Input Bar */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { marginBottom: bottomChatMargin }]}>
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}
@@ -371,7 +375,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBackground,
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
-    marginBottom: Platform.OS === 'ios' ? 0 : 70,
   },
   inputWrapper: {
     flexDirection: 'row',
