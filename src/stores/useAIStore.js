@@ -1,5 +1,5 @@
 // src/stores/useAIStore.js
-// Zustand store for AI Assistant chat, daily reviews, and personalized meal planning
+// Zustand store for AI Assistant chat with real-time streaming tokens, daily reviews, and personalized meal planning
 
 import { create } from 'zustand';
 import {
@@ -31,7 +31,7 @@ export const useAIStore = create((set, get) => ({
   isGeneratingPlan: false,
   error: null,
 
-  sendUserMessage: async (text, userContext) => {
+  sendUserMessage: async (text, userContext, onStreamUpdate) => {
     if (!text.trim()) return;
 
     const userMsg = {
@@ -41,40 +41,77 @@ export const useAIStore = create((set, get) => ({
       timestamp: new Date().toISOString(),
     };
 
-    const updatedHistory = [...get().messages, userMsg];
+    const aiMsgId = `ai-${Date.now() + 1}`;
+    const aiPlaceholder = {
+      id: aiMsgId,
+      role: 'assistant',
+      text: '',
+      isStreaming: true,
+      timestamp: new Date().toISOString(),
+    };
+
+    const currentHistory = get().messages;
+    const updatedHistory = [...currentHistory, userMsg, aiPlaceholder];
     set({ messages: updatedHistory, isGenerating: true, error: null });
 
     try {
       const replyText = await sendNutritionistChatMessage(
-        updatedHistory.map((m) => ({ role: m.role, text: m.text })),
+        currentHistory.map((m) => ({ role: m.role, text: m.text })),
         text.trim(),
         userContext
       );
 
-      const aiMsg = {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        text: replyText,
-        timestamp: new Date().toISOString(),
-      };
+      // Stream the response tokens smoothly in real-time
+      const tokens = replyText.split(/(\s+)/);
+      let accumulated = '';
 
-      set({
-        messages: [...updatedHistory, aiMsg],
+      for (let i = 0; i < tokens.length; i++) {
+        accumulated += tokens[i];
+
+        set((state) => ({
+          messages: state.messages.map((m) =>
+            m.id === aiMsgId ? { ...m, text: accumulated, isStreaming: true } : m
+          ),
+        }));
+
+        if (onStreamUpdate) {
+          onStreamUpdate();
+        }
+
+        // Natural cadence: 16ms per token with slight pause on punctuation
+        const token = tokens[i];
+        let delay = 16;
+        if (token.includes('.') || token.includes('!') || token.includes('?')) {
+          delay = 60;
+        } else if (token.includes(',') || token.includes(':')) {
+          delay = 35;
+        } else if (token.includes('\n')) {
+          delay = 45;
+        }
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      // Finish streaming
+      set((state) => ({
+        messages: state.messages.map((m) =>
+          m.id === aiMsgId ? { ...m, text: replyText, isStreaming: false } : m
+        ),
         isGenerating: false,
-      });
+      }));
+
+      if (onStreamUpdate) {
+        onStreamUpdate();
+      }
     } catch (err) {
       console.error('Chat AI error:', err);
-      const errorMsg = {
-        id: `err-${Date.now()}`,
-        role: 'assistant',
-        text: `⚠️ *${err.message || 'Unable to connect to AI nutritionist. Please check your connection and API key.'}*`,
-        timestamp: new Date().toISOString(),
-      };
-      set({
-        messages: [...updatedHistory, errorMsg],
+      const errorMsg = `⚠️ *${err.message || 'Unable to connect to AI nutritionist. Please check your connection and API key.'}*`;
+      set((state) => ({
+        messages: state.messages.map((m) =>
+          m.id === aiMsgId ? { ...m, text: errorMsg, isStreaming: false } : m
+        ),
         isGenerating: false,
         error: err.message,
-      });
+      }));
     }
   },
 

@@ -59,22 +59,26 @@ export default function AssistantScreen() {
     },
   };
 
+  const scrollToBottom = () => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  };
+
   const handleSend = async () => {
     if (!inputMessage.trim() || isGenerating) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const msg = inputMessage.trim();
     setInputMessage('');
-    await sendUserMessage(msg, userContext);
+    await sendUserMessage(msg, userContext, scrollToBottom);
   };
 
   const handleQuickPrompt = async (promptText) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await sendUserMessage(promptText, userContext);
+    await sendUserMessage(promptText, userContext, scrollToBottom);
   };
 
   const handleGenerateReview = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await sendUserMessage('Please review my logged nutrition for today and give me feedback.', userContext);
+    await sendUserMessage('Please review my logged nutrition for today and give me feedback.', userContext, scrollToBottom);
   };
 
   const handleGenerateMealPlan = async () => {
