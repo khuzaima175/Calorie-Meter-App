@@ -1,12 +1,11 @@
 // src/components/CalorieRing.js
-// Circular SVG Calorie Ring with spring animated stroke fill and remaining count
+// Circular SVG Calorie Ring with smooth animated stroke fill and remaining count
+// Cross-platform compatible (iOS, Android, and Web)
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import Svg, { Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, typography } from '../theme/colors';
-
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 export default function CalorieRing({
   consumed = 0,
@@ -16,7 +15,6 @@ export default function CalorieRing({
   strokeWidth = 14,
 }) {
   const animatedProgress = useRef(new Animated.Value(0)).current;
-
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -26,24 +24,32 @@ export default function CalorieRing({
   const percentage = goal > 0 ? Math.min(1.2, netConsumed / goal) : 0;
   const isOver = remaining < 0;
 
+  const [strokeDashoffset, setStrokeDashoffset] = useState(
+    circumference * (1 - Math.min(1, percentage))
+  );
+
   useEffect(() => {
+    const listenerId = animatedProgress.addListener(({ value }) => {
+      const clampedVal = Math.min(1, Math.max(0, value));
+      setStrokeDashoffset(circumference * (1 - clampedVal));
+    });
+
     Animated.spring(animatedProgress, {
       toValue: percentage,
-      useNativeDriver: true,
+      useNativeDriver: false,
       damping: 18,
       stiffness: 90,
       mass: 0.8,
     }).start();
-  }, [percentage, animatedProgress]);
 
-  // Stroke Dashoffset interpolation
-  const strokeDashoffset = animatedProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [circumference, 0],
-  });
+    return () => {
+      animatedProgress.removeListener(listenerId);
+    };
+  }, [percentage, animatedProgress, circumference]);
 
   const ringColor = isOver ? colors.caloriesBurned : colors.sagePrimary;
   const ringEndColor = isOver ? colors.error : colors.sageBright;
+  const center = size / 2;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
@@ -55,25 +61,25 @@ export default function CalorieRing({
           </LinearGradient>
         </Defs>
 
-        <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
+        <G transform={`rotate(-90 ${center} ${center})`}>
           {/* Background Track Circle */}
           <Circle
-            cx={size / 2}
-            cy={size / 2}
+            cx={center}
+            cy={center}
             r={radius}
             stroke={colors.cardElevated}
             strokeWidth={strokeWidth}
             fill="none"
           />
 
-          {/* Animated Progress Circle */}
-          <AnimatedCircle
-            cx={size / 2}
-            cy={size / 2}
+          {/* Progress Circle */}
+          <Circle
+            cx={center}
+            cy={center}
             r={radius}
             stroke="url(#calorieGrad)"
             strokeWidth={strokeWidth}
-            strokeDasharray={circumference}
+            strokeDasharray={`${circumference} ${circumference}`}
             strokeDashoffset={strokeDashoffset}
             strokeLinecap="round"
             fill="none"
