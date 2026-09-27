@@ -1,7 +1,7 @@
 // src/components/QuickAddModal.js
 // Fast manual calorie & macro logging modal
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -40,6 +40,20 @@ export default function QuickAddModal({
   const [fat, setFat] = useState(editMeal?.fat ? String(editMeal.fat) : '');
   const [portion, setPortion] = useState(editMeal?.portion || '1 serving');
   const [error, setError] = useState('');
+
+  // Reset form when modal opens or editMeal changes
+  useEffect(() => {
+    if (visible) {
+      setMealType(editMeal?.meal_type || initialMealType);
+      setName(editMeal?.name || '');
+      setCalories(editMeal ? String(editMeal.calories) : '');
+      setProtein(editMeal?.protein ? String(editMeal.protein) : '');
+      setCarbs(editMeal?.carbs ? String(editMeal.carbs) : '');
+      setFat(editMeal?.fat ? String(editMeal.fat) : '');
+      setPortion(editMeal?.portion || '1 serving');
+      setError('');
+    }
+  }, [visible, editMeal, initialMealType]);
 
   const handleSave = () => {
     if (!name.trim()) {

@@ -1,8 +1,8 @@
 // src/navigation/TabNavigator.js
 // Custom sleek bottom tab navigator with center action button and haptic feedback
 
-import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -22,6 +22,7 @@ const TABS = [
 
 export default function TabNavigator() {
   const [activeRoute, setActiveRoute] = useState('Dashboard');
+  const centerBtnScale = useRef(new Animated.Value(1)).current;
 
   const handleTabPress = (routeKey) => {
     Haptics.impactAsync(
@@ -29,6 +30,24 @@ export default function TabNavigator() {
         ? Haptics.ImpactFeedbackStyle.Medium
         : Haptics.ImpactFeedbackStyle.Light
     ).catch(() => {});
+
+    // Bounce the center button when pressed
+    if (routeKey === 'LogMeal') {
+      Animated.sequence([
+        Animated.spring(centerBtnScale, {
+          toValue: 0.85,
+          useNativeDriver: true,
+          speed: 50,
+        }),
+        Animated.spring(centerBtnScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          speed: 12,
+          bounciness: 8,
+        }),
+      ]).start();
+    }
+
     setActiveRoute(routeKey);
   };
 
@@ -71,9 +90,9 @@ export default function TabNavigator() {
                 onPress={() => handleTabPress(tab.key)}
                 activeOpacity={0.85}
               >
-                <View style={styles.centerBtnInner}>
+                <Animated.View style={[styles.centerBtnInner, { transform: [{ scale: centerBtnScale }] }]}>
                   <Ionicons name="camera-outline" size={22} color={colors.textInverse} />
-                </View>
+                </Animated.View>
               </TouchableOpacity>
             );
           }
@@ -98,6 +117,7 @@ export default function TabNavigator() {
               >
                 {tab.label}
               </Text>
+              {isActive && <View style={styles.activeIndicatorDot} />}
             </TouchableOpacity>
           );
         })}
@@ -162,5 +182,12 @@ const styles = StyleSheet.create({
   centerBtnInner: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  activeIndicatorDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.sageBright,
+    marginTop: 3,
   },
 });

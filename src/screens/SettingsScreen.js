@@ -466,8 +466,8 @@ export default function SettingsScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.actionLeft}>
-              <Ionicons name="trash-outline" size={20} color={colors.carb} />
-              <Text style={[styles.actionText, { color: colors.carb }]}>Clear All Logs (Start From Scratch)</Text>
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
+              <Text style={[styles.actionText, { color: colors.error }]}>Clear All Logs (Start From Scratch)</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>

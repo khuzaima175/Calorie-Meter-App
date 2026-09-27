@@ -1,7 +1,7 @@
 // src/screens/DashboardScreen.js
 // Central Dashboard Screen: Calorie ring, earth-tone macros, hydration, workout summary, and meal categories
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +44,31 @@ export default function DashboardScreen({ navigation }) {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [activeMealType, setActiveMealType] = useState('breakfast');
   const [editingMeal, setEditingMeal] = useState(null);
+
+  // Staggered fade-in entrance animations
+  const fadeAnims = useRef([...Array(5)].map(() => new Animated.Value(0))).current;
+  const slideAnims = useRef([...Array(5)].map(() => new Animated.Value(18))).current;
+
+  useEffect(() => {
+    const animations = fadeAnims.map((fade, i) =>
+      Animated.parallel([
+        Animated.timing(fade, {
+          toValue: 1,
+          duration: 450,
+          delay: i * 80,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnims[i], {
+          toValue: 0,
+          delay: i * 80,
+          useNativeDriver: true,
+          damping: 20,
+          stiffness: 120,
+        }),
+      ])
+    );
+    Animated.stagger(0, animations).start();
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -100,6 +126,7 @@ export default function DashboardScreen({ navigation }) {
         }
       >
         {/* Header Bar */}
+        <Animated.View style={{ opacity: fadeAnims[0], transform: [{ translateY: slideAnims[0] }] }}>
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.greetingText}>
@@ -128,8 +155,10 @@ export default function DashboardScreen({ navigation }) {
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
         />
+        </Animated.View>
 
         {/* Hero Calorie & Macro Card */}
+        <Animated.View style={{ opacity: fadeAnims[1], transform: [{ translateY: slideAnims[1] }] }}>
         <Card style={styles.heroCard}>
           <View style={styles.ringWrapper}>
             <CalorieRing
@@ -178,8 +207,10 @@ export default function DashboardScreen({ navigation }) {
             />
           </View>
         </Card>
+        </Animated.View>
 
         {/* Hydration Tracker */}
+        <Animated.View style={{ opacity: fadeAnims[2], transform: [{ translateY: slideAnims[2] }] }}>
         <WaterTracker
           current={dailyTotals.water}
           goal={goals.water_ml}
@@ -211,8 +242,10 @@ export default function DashboardScreen({ navigation }) {
             </View>
           </TouchableOpacity>
         ) : null}
+        </Animated.View>
 
         {/* Meal Categories */}
+        <Animated.View style={{ opacity: fadeAnims[3], transform: [{ translateY: slideAnims[3] }] }}>
         <View style={styles.mealsHeader}>
           <Text style={styles.sectionTitle}>Today's Meals</Text>
           <TouchableOpacity
@@ -240,7 +273,9 @@ export default function DashboardScreen({ navigation }) {
           onDeleteMeal={removeMeal}
           onMealPress={handleOpenEditMeal}
         />
+        </Animated.View>
 
+        <Animated.View style={{ opacity: fadeAnims[4], transform: [{ translateY: slideAnims[4] }] }}>
         <MealSection
           type="dinner"
           meals={dinnerMeals}
@@ -256,6 +291,7 @@ export default function DashboardScreen({ navigation }) {
           onDeleteMeal={removeMeal}
           onMealPress={handleOpenEditMeal}
         />
+        </Animated.View>
 
         {/* Quick Add Modal */}
         <QuickAddModal

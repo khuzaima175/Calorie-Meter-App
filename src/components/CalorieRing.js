@@ -95,6 +95,11 @@ export default function CalorieRing({
         <Text style={styles.remainingLabel}>
           {isOver ? 'kcal over' : 'kcal remaining'}
         </Text>
+        {burned > 0 && (
+          <Text style={styles.netLabel}>
+            Net: {Math.round(goal - netConsumed + burned)} kcal
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -125,5 +130,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: -2,
     fontWeight: '500',
+  },
+  netLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.sagePrimary,
+    marginTop: 2,
+    opacity: 0.8,
   },
 });
