@@ -1,72 +1,126 @@
-# Calorie Meter Pro - AI-Powered Nutrition Tracker
+# CalorieSnap Pro
 
-A modern, python-based desktop application for tracking calories, nutrition, and fitness goals, supercharged with Gemini AI.
+A clean, offline-first mobile calorie, macronutrient, and workout tracker built with React Native and Expo.
 
-## Features
+---
 
-- **🥑 Smart Food Logging**: 
-  - Add food by typing natural descriptions (e.g., "2 eggs and toast").
-  - **📸 Photo Analysis**: Upload a picture of your meal, and the AI will estimate calories and macros.
-- **📊 Interactive Dashboard**:
-  - Live charts for calorie types, macronutrient breakdown, and weekly trends.
-  - "Quick Stats" sidebar for at-a-glance progress.
-- **🤖 AI Nutrition Assistant**:
-  - **Nutrition QA**: Ask any diet or health question.
-  - **Meal Planner**: Get personalized daily meal plans based on your goals.
-  - **Motivational Coach**: Get daily AI-generated motivation based on your streak and progress.
-- **💧 Water & Exercise Tracking**: dedicated tabs for hydration and workout logging.
-- **📈 History & Goals**: Review past logs and set customized calorie/macro targets.
-- **🔥 Streak Tracking & Quick Add**: Keep track of consecutive logging days and use one-click chips for common foods.
-- **📊 Data Export**: Easily export your daily nutrition and exercise logs to CSV format.
-- **⌨️ Keyboard Navigation**: Swiftly move between dates using `<Control-Left>` and `<Control-Right>`.
-- **🌑 Modern UI**: Built with CustomTkinter, featuring live Theme switching (Light/Dark mode) and smooth animations.
+## Overview
+
+CalorieSnap Pro helps you track daily nutrition, hydration, and exercises without bloated interfaces or mandatory cloud accounts. It includes AI-assisted photo recognition, nutrition label scanning, and barcode search, while keeping your personal log stored locally on your device via SQLite.
+
+---
+
+## Core Features
+
+- **Food Logging**:
+  - **Photo Recognition**: Take a picture of a meal plate to estimate portion sizes, calories, and macros.
+  - **Nutrition Label Scanner**: Extract nutrition tables directly from packaged food labels using OCR.
+  - **Barcode Scanner**: Search products instantly via OpenFoodFacts with automatic unit conversions.
+  - **Text Parser**: Log meals naturally using plain text descriptions (e.g., "2 scrambled eggs, avocado toast").
+  - **Quick Entry**: Fast manual logging for custom meals, calories, and macronutrient targets.
+
+- **Dashboard & Macro Tracking**:
+  - Daily calorie ring displaying remaining vs. consumed calories with exercise burn deductions.
+  - Earth-tone macronutrient progress breakdown (Protein, Carbohydrates, Fats).
+  - Date navigator to review past logs or plan ahead.
+
+- **Hydration Tracking**:
+  - Interactive water intake logging with quick +250ml / +500ml increments and daily goal progress.
+
+- **Workout & Activity**:
+  - Track exercises (Running, Cycling, HIIT, Strength Training, Swimming, Yoga, etc.) with automatic MET-based calorie burn calculations based on body weight and duration.
+
+- **Nutrition Coach (Sage)**:
+  - Context-aware nutritional advice, custom meal plan generator, and daily diet reviews powered by Google Gemini.
+
+- **Metabolism & Profile Calculation**:
+  - Automatic BMR (Basal Metabolic Rate) and TDEE (Total Daily Energy Expenditure) calculation using the Mifflin-St Jeor formula to suggest target calorie and macro splits.
+
+---
 
 ## Tech Stack
 
-- **Python 3.10+** (Core Logic)
-- **CustomTkinter** (Modern UI Framework)
-- **Google Gemini API** (AI Analysis & Chat)
-- **SQLite** (Local Database)
-- **Matplotlib** (Data Visualization)
+- **Framework**: React Native 0.86, Expo SDK 57
+- **State Management**: Zustand
+- **Local Storage**: `expo-sqlite` (WAL mode with schema migrations) on mobile; localStorage on web
+- **AI Services**: Google Gemini API (`gemini-3.7-flash` with `gemini-3.5-flash-lite` fallback)
+- **Barcode Lookup**: OpenFoodFacts API
+- **Date Handling**: `date-fns`
 
-## Installation
+---
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/khuzaima175/Calorie-Meter-App.git
-   cd Calorie-Meter-App
-   ```
+## Getting Started
 
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 1. Prerequisites
 
-3. **Set up API Key**:
-   - Get your free API key from [Google AI Studio](https://aistudio.google.com/).
-   - Create a `.env` file in the root directory:
-     ```env
-     GEMINI_API_KEY=your_api_key_here
-     ```
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Expo Go](https://expo.dev/go) app installed on your iOS or Android phone
 
-## Usage
+### 2. Installation
 
-Run the main application:
+Clone the repository and install dependencies:
 
 ```bash
-python main.py
+git clone https://github.com/khuzaima175/Calorie-Meter-App.git
+cd Calorie-Meter-App
+npm install
 ```
 
-- **First Launch**: The app will create a local database (`calorie_tracker.db`) automatically.
-- **Navigation**: Use the sidebar to switch between Daily Log, Charts, AI Analysis, and more.
+### 3. Configure API Key
 
-## Development
+Create a `.env` file in the project root:
 
-- `main.py`: Entry point.
-- `ui/`: Contains all UI code and tab modules.
-- `ai_manager.py`: Handles interactions with Google Gemini.
-- `database.py`: Manages SQLite storage for meals and exercises.
+```env
+EXPO_PUBLIC_GEMINI_KEY=your_gemini_api_key_here
+```
+
+> Get a free API key from [Google AI Studio](https://aistudio.google.com/).
+
+### 4. Run the App
+
+Start the development server:
+
+```bash
+npx expo start -c
+```
+
+- **On Mobile**: Scan the QR code using Expo Go (Android) or the Camera app (iOS).
+- **Tunnel Mode** (recommended if PC and phone are on different subnets or behind firewalls):
+  ```bash
+  npx expo start --tunnel -c
+  ```
+- **Web Preview**: Press `w` in the terminal or visit `http://localhost:8081`.
+
+---
+
+## Project Structure
+
+```
+src/
+├── App.js                     # Root component and database bootstrapper
+├── theme/
+│   └── colors.js              # Theme tokens and color palette
+├── stores/
+│   ├── useNutritionStore.js   # Meals, water, and exercise state
+│   ├── useProfileStore.js     # User profile, goals, and BMR/TDEE calculations
+│   └── useAIStore.js          # Chat history, daily reviews, and meal plans
+├── services/
+│   ├── databaseService.js     # SQLite singleton with schema migrations
+│   ├── geminiService.js       # Rate-limited Gemini vision and chat integration
+│   └── barcodeService.js      # OpenFoodFacts client with kJ/kcal conversion
+├── components/                # Reusable UI components
+├── navigation/
+│   └── TabNavigator.js        # Bottom navigation bar
+└── screens/
+    ├── DashboardScreen.js     # Daily overview, calorie ring, and meal categories
+    ├── LogMealScreen.js       # 5-tab food logging interface
+    ├── ActivityScreen.js      # Workout tracking and active minutes
+    ├── AssistantScreen.js     # Sage AI Nutritionist
+    └── SettingsScreen.js      # Profile settings, targets, and data management
+```
+
+---
 
 ## License
 
-This project is open-source. Feel free to fork and improve!
+This project is open source and available under the [MIT License](LICENSE).

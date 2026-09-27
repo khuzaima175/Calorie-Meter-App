@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "CalorieSnap Pro",
+    "slug": "calorie-meter-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "CalorieSnap needs camera access to recognize food and scan barcodes.",
+        "NSPhotoLibraryUsageDescription": "CalorieSnap needs photo library access to analyze meal pictures."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#121214"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow CalorieSnap to access camera for food photo recognition and barcode scanning."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow CalorieSnap to access meal photos."
+        }
+      ],
+      "expo-asset",
+      "expo-font",
+      "expo-sqlite"
+    ]
+  }
+}
