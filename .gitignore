@@ -32,5 +32,7 @@ yarn-error.log*
 .DS_Store
 .vscode/
 .idea/
+test_gemini_speed.js
+
 
 
