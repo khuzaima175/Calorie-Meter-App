@@ -43,7 +43,7 @@ CalorieSnap Pro helps you track daily nutrition, hydration, and exercises withou
 - **Framework**: React Native 0.86, Expo SDK 57
 - **State Management**: Zustand
 - **Local Storage**: `expo-sqlite` (WAL mode with schema migrations) on mobile; localStorage on web
-- **AI Services**: Google Gemini API (`gemini-3.7-flash` with `gemini-3.5-flash-lite` fallback)
+- **AI Services**: Google Gemini API (`gemini-3.5-flash-lite` primary with `gemini-flash-lite-latest` fallback)
 - **Barcode Lookup**: OpenFoodFacts API
 - **Date Handling**: `date-fns`
 

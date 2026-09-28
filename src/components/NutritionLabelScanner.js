@@ -40,7 +40,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
+        quality: 0.45,
         base64: true,
       });
 
@@ -62,7 +62,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.85,
+        quality: 0.45,
         base64: true,
       });
 
@@ -118,10 +118,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
   }
 
   return (
-    <View
-      style={styles.container}
-      onLayout={(e) => console.log('[LAYOUT] labelScannerContainer', JSON.stringify(e.nativeEvent.layout))}
-    >
+    <View style={styles.container}>
       {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
@@ -131,8 +128,6 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
           facing={facing}
           enableTorch={torch}
           mode="picture"
-          onCameraReady={() => console.log('LABEL CAMERA READY')}
-          onMountError={(e) => console.log('LABEL CAMERA MOUNT ERROR:', e?.nativeEvent || e)}
         />
       )}
 

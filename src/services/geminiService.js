@@ -1,8 +1,8 @@
 import { useProfileStore } from '../stores/useProfileStore';
 
-// Models: 3.5 Flash-Lite as Primary (ultra-fast sub-second inference), 3.7 Flash as Secondary
+// Models: 3.5 Flash-Lite as Primary (ultra-fast sub-second inference), Flash-Lite-Latest as Fallback
 const PRIMARY_MODEL = 'gemini-3.5-flash-lite';
-const FALLBACK_MODEL = 'gemini-3.7-flash';
+const FALLBACK_MODEL = 'gemini-flash-lite-latest';
 const CHAT_MODEL = 'gemini-3.5-flash-lite';
 
 /**
@@ -233,9 +233,9 @@ export async function testGeminiApiKey(candidateKey) {
 }
 
 /**
- * Core caller for Gemini REST API with fallback, rate limiting, and friendly error formatting
+ * Core caller for Gemini REST API with fallback, rate limiting, structured JSON support, and friendly error formatting
  */
-async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODEL) {
+async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODEL, options = {}) {
   const apiKey = getApiKey();
   if (!apiKey || apiKey.startsWith('AIzaSy_REPLACE')) {
     throw new Error('Please set your Gemini API key in Profile > Settings or in your .env file.');
@@ -250,13 +250,19 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
+  const generationConfig = {
+    temperature: options.temperature ?? 0.2,
+    topP: options.topP ?? 0.95,
+    maxOutputTokens: options.maxOutputTokens ?? 2048,
+  };
+
+  if (options.jsonMode) {
+    generationConfig.responseMimeType = 'application/json';
+  }
+
   const body = {
     contents,
-    generationConfig: {
-      temperature: 0.2,
-      topP: 0.95,
-      maxOutputTokens: 2048,
-    },
+    generationConfig,
   };
 
   if (systemInstruction) {
@@ -289,7 +295,7 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
           throw new Error(friendlyMsg);
         }
         console.warn(`Model ${PRIMARY_MODEL} returned ${response.status}, retrying with ${FALLBACK_MODEL}...`);
-        return await callGemini(contents, systemInstruction, FALLBACK_MODEL);
+        return await callGemini(contents, systemInstruction, FALLBACK_MODEL, options);
       }
 
       const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
@@ -311,7 +317,7 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     }
 
     if (model === PRIMARY_MODEL) {
-      return await callGemini(contents, systemInstruction, FALLBACK_MODEL);
+      return await callGemini(contents, systemInstruction, FALLBACK_MODEL, options);
     }
     throw error;
   }
@@ -443,7 +449,7 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
     },
   ];
 
-  const rawOutput = await callGemini(contents, systemPrompt);
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
@@ -492,7 +498,7 @@ Extract the nutrition data and return ONLY a valid JSON object:
     },
   ];
 
-  const rawOutput = await callGemini(contents, systemPrompt);
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
@@ -553,7 +559,7 @@ Return ONLY a valid JSON object:
     },
   ];
 
-  const rawOutput = await callGemini(contents, systemPrompt);
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
@@ -684,7 +690,7 @@ Return ONLY valid JSON with this structure:
 }`;
 
   const contents = [{ role: 'user', parts: [{ text: 'Generate meal plan matching these exact macros.' }] }];
-  const rawOutput = await callGemini(contents, systemPrompt);
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {

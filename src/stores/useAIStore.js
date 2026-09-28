@@ -61,37 +61,7 @@ export const useAIStore = create((set, get) => ({
         userContext
       );
 
-      // Stream the response tokens smoothly in real-time
-      const tokens = replyText.split(/(\s+)/);
-      let accumulated = '';
-
-      for (let i = 0; i < tokens.length; i++) {
-        accumulated += tokens[i];
-
-        set((state) => ({
-          messages: state.messages.map((m) =>
-            m.id === aiMsgId ? { ...m, text: accumulated, isStreaming: true } : m
-          ),
-        }));
-
-        if (onStreamUpdate) {
-          onStreamUpdate();
-        }
-
-        // Natural cadence: 16ms per token with slight pause on punctuation
-        const token = tokens[i];
-        let delay = 16;
-        if (token.includes('.') || token.includes('!') || token.includes('?')) {
-          delay = 60;
-        } else if (token.includes(',') || token.includes(':')) {
-          delay = 35;
-        } else if (token.includes('\n')) {
-          delay = 45;
-        }
-        await new Promise((r) => setTimeout(r, delay));
-      }
-
-      // Finish streaming
+      // Instant rendering: Gemini 3.5 Flash-Lite returns in ~1s, display immediately
       set((state) => ({
         messages: state.messages.map((m) =>
           m.id === aiMsgId ? { ...m, text: replyText, isStreaming: false } : m

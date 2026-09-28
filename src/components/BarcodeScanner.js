@@ -83,10 +83,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
   }
 
   return (
-    <View
-      style={styles.container}
-      onLayout={(e) => console.log('[LAYOUT] barcodeScannerContainer', JSON.stringify(e.nativeEvent.layout))}
-    >
+    <View style={styles.container}>
       {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
@@ -98,8 +95,6 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
             barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
           }}
           onBarcodeScanned={scanned || isProcessing ? undefined : handleBarcodeScanned}
-          onCameraReady={() => console.log('BARCODE CAMERA READY')}
-          onMountError={(e) => console.log('BARCODE CAMERA MOUNT ERROR:', e?.nativeEvent || e)}
         />
       )}
 

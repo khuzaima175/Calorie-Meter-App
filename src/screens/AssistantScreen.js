@@ -126,7 +126,7 @@ export default function AssistantScreen() {
             </View>
             <View>
               <Text style={styles.headerTitle}>Sage AI Nutritionist</Text>
-              <Text style={styles.headerStatus}>Gemini 3.7 Flash • Active Coach</Text>
+              <Text style={styles.headerStatus}>Gemini 3.5 Flash-Lite • Active Coach</Text>
             </View>
           </View>
 
