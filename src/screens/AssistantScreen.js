@@ -6,13 +6,13 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
   Keyboard,
   UIManager,
   LayoutAnimation,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,22 +48,29 @@ export default function AssistantScreen() {
   const scrollViewRef = useRef(null);
   const isUserNearBottom = useRef(true);
   const insets = useSafeAreaInsets();
+  const keyboardPadding = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
-    const showSub = Keyboard.addListener(showEvent, () => {
-      if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      }
-      setTimeout(() => scrollToBottom(true), 100);
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const height = e.endCoordinates ? e.endCoordinates.height : 0;
+      Animated.timing(keyboardPadding, {
+        toValue: height,
+        duration: Platform.OS === 'ios' ? (e.duration || 250) : 120,
+        useNativeDriver: false,
+      }).start(() => {
+        scrollToBottom(true);
+      });
     });
 
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      }
+    const hideSub = Keyboard.addListener(hideEvent, (e) => {
+      Animated.timing(keyboardPadding, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? (e?.duration || 250) : 120,
+        useNativeDriver: false,
+      }).start();
     });
 
     return () => {
@@ -141,11 +148,7 @@ export default function AssistantScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
-      >
+      <Animated.View style={[styles.container, { paddingBottom: keyboardPadding }]}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -303,7 +306,7 @@ export default function AssistantScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

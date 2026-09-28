@@ -283,6 +283,54 @@ A comprehensive, historical engineering log of all bugs encountered during devel
 
 ---
 
+### 25. Keyboard Initial Overshoot & First-Letter Jump in Sage AI Chat
+- **Severity**: 🟡 Medium
+- **Symptoms**: When focusing the chat input in `AssistantScreen`, the UI pushed upward ~65px too much, creating a gap above the keyboard. Upon typing the first character, the UI suddenly snapped down to the correct position.
+- **Root Cause**: `KeyboardAvoidingView` with `behavior="height"` computed its height using `this._frame.height - keyboardHeight`. Because `TabNavigator` unmounted the bottom tab bar on keyboard show, `_frame.height` was measured with the tab bar present. Typing the first character triggered a re-render after the tab bar was gone, recalculating with the full viewport and causing a visible 65px snap.
+- **Exact Code Solution**: Replaced `KeyboardAvoidingView` in [`src/screens/AssistantScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/AssistantScreen.js) with a dedicated `<Animated.View style={[styles.container, { paddingBottom: keyboardPadding }]}>` driven directly by `Keyboard.addListener`. The padding value directly tracks the native keyboard height without subtracting from container frames, eliminating the initial overshoot and jump.
+- **Verification**: Verified on Android; input bar smoothly glides directly above the soft keyboard immediately upon open with zero jitter or first-letter jump.
+
+---
+
+### 26. Gemini 3.5 Flash-Lite Thinking Part Extraction & "Parsing Failed" Fix
+- **Severity**: 🔴 Critical
+- **Symptoms**: Typing meal descriptions (e.g. "2 ghee paratha with four chicken wings") in the "Aa Text" tab failed with `Parsing Failed: Could not parse meal description`.
+- **Root Cause**: 
+  1. Models with internal reasoning/thinking (such as Gemini 3.5 Flash-Lite) return multi-part payloads in `candidates[0].content.parts`. `parts[0]` contained thinking metadata/thought tokens, while `parts[1]` contained the JSON output. The code was hardcoded to read only `parts[0].text`, attempting to parse an empty string or thinking signature as JSON.
+  2. `cleanJsonText` failed if conversational text accompanied the markdown code fence.
+  3. `FOOD_ANALYSIS_SCHEMA` omitted the `ingredients` array declared in the system prompt.
+- **Exact Code Solution**:
+  1. Updated `callGemini` in [`src/services/geminiService.js`](file:///g:/Important%20Projects/calorie%20meter/src/services/geminiService.js) to filter out thought parts (`!p.thought`) and concatenate all text parts.
+  2. Enhanced `cleanJsonText` to extract the outermost `{ ... }` block regardless of markdown fences or conversational text.
+  3. Added `ingredients: { type: 'ARRAY', items: { type: 'STRING' } }` to `FOOD_ANALYSIS_SCHEMA` and normalized `health_tips`.
+- **Verification**: Unit tested and verified live with Gemini API for "2 ghee paratha with four chicken wings"; returns parsed 950 kcal payload in ~2s.
+
+---
+
+### 27. Zero-Manual-Calorie Entry: AI Auto-Calculation in Quick Log & Manual Entry
+- **Severity**: 🟠 High
+- **Symptoms**: Clicking "+ Add" on Dashboard Today's Meals opened `QuickAddModal`, requiring users to manually guess and type numerical calories and macros.
+- **Root Cause**: `QuickAddModal` was originally built as a pure manual numbers form without AI estimation integration.
+- **Exact Code Solution**:
+  1. Integrated `parseMealDescription` into [`src/components/QuickAddModal.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/QuickAddModal.js).
+  2. Added an **"✨ Auto-Calculate Macros with AI"** button below the Food Name input with an activity indicator.
+  3. In `handleSave`: If the user enters a food name and taps "Log Meal" without entering calories, the modal automatically triggers Gemini AI estimation on the fly and saves the meal without requiring manual numbers.
+  4. Added matching AI auto-calculation to the Manual entry tab in [`src/screens/LogMealScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/LogMealScreen.js).
+- **Verification**: Verified typing "Chicken Biryani" or "Scrambled Eggs & Toast" auto-fills macros instantly or auto-saves with full AI nutritional breakdown.
+
+---
+
+### 28. SurfaceView Hardware Occlusion in Nutrition Label & Barcode Scanners
+- **Severity**: 🔴 Critical
+- **Symptoms**: While Photo mode camera preview worked, the camera viewport in "Label" and "Barcode" modes was black or occluded on Android.
+- **Root Cause**: `container` in both `NutritionLabelScanner.js` and `BarcodeScanner.js` had `backgroundColor: '#000000'`, drawing an opaque software box over the native Android GPU `SurfaceView`/`TextureView`.
+- **Exact Code Solution**:
+  1. In [`src/components/NutritionLabelScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/NutritionLabelScanner.js): Set `container` background to `backgroundColor: 'transparent'` and applied `width: '100%', height: '100%'` to `cameraView`.
+  2. In [`src/components/BarcodeScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/BarcodeScanner.js): Set `container` background to `backgroundColor: 'transparent'`, applied `width: '100%', height: '100%'` to `cameraView`, and wrapped manual barcode entry in `KeyboardAvoidingView`.
+- **Verification**: Verified on Android; live camera feed displays full-bleed across Photo, Nutrition Label, and Barcode modes.
+
+---
+
 ## 🚀 Feature Status & Production Matrix
 
 | Feature Module | Capabilities | Status | Test Coverage |
@@ -304,7 +352,7 @@ A comprehensive, historical engineering log of all bugs encountered during devel
 | **Local Notifications** | 4 daily meal and hydration reminders via `expo-notifications` | ✅ Active | Verified |
 | **Accessibility (A11y)** | WCAG AA labels, roles, hints, and states on all interactive elements | ✅ Active | Verified |
 | **Offline Persistence** | SQLite WAL local storage with network status banner | ✅ Active | Verified |
-| **Unit Test Suite** | 11 automated unit tests (`npm test`) | ✅ Active | 11/11 Passing |
+| **Unit Test Suite** | 12 automated unit tests (`npm test`) | ✅ Active | 12/12 Passing |
 
 ---
 

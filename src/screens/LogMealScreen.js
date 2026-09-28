@@ -70,6 +70,39 @@ export default function LogMealScreen({ navigation }) {
   const [manualProtein, setManualProtein] = useState('');
   const [manualCarbs, setManualCarbs] = useState('');
   const [manualFat, setManualFat] = useState('');
+  const [isEstimatingManual, setIsEstimatingManual] = useState(false);
+
+  const handleEstimateManual = async () => {
+    const query = manualName.trim();
+    if (!query) {
+      Alert.alert('Missing Name', 'Please type a food or meal name first.');
+      return;
+    }
+    setIsEstimatingManual(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      const fullQuery = manualPortion.trim() && manualPortion.trim() !== '1 serving'
+        ? `${query} (${manualPortion.trim()})`
+        : query;
+      const result = await parseMealDescription(fullQuery, {
+        mealPeriod: { mealType: manualMealType, label: manualMealType, timeStr: '' },
+      });
+      if (result) {
+        if (result.calories != null) setManualCalories(String(Math.round(result.calories)));
+        if (result.protein != null) setManualProtein(String(Math.round(result.protein)));
+        if (result.carbs != null) setManualCarbs(String(Math.round(result.carbs)));
+        if (result.fat != null) setManualFat(String(Math.round(result.fat)));
+        if (result.portion && (!manualPortion || manualPortion === '1 serving')) {
+          setManualPortion(result.portion);
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+    } catch (err) {
+      Alert.alert('Estimation Failed', err?.message || 'Could not auto-calculate. Please enter calories manually.');
+    } finally {
+      setIsEstimatingManual(false);
+    }
+  };
 
   const isCameraMode =
     (activeTab === 'photo' || activeTab === 'label' || activeTab === 'barcode') &&
@@ -190,34 +223,66 @@ export default function LogMealScreen({ navigation }) {
 
   // 5. Manual Save Handler (with double-tap guard and strict bounds validation)
   const handleSaveManual = async () => {
-    if (isSaving) return;
-
-    const calNum = Number(manualCalories);
-    const protNum = Number(manualProtein) || 0;
-    const carbsNum = Number(manualCarbs) || 0;
-    const fatNum = Number(manualFat) || 0;
+    if (isSaving || isEstimatingManual) return;
 
     if (!manualName.trim()) {
       Alert.alert('Missing Name', 'Please enter a food or meal name.');
       return;
     }
-    if (isNaN(calNum) || calNum <= 0 || calNum > 10000) {
+
+    let calNum = Number(manualCalories);
+    let protNum = Number(manualProtein) || 0;
+    let carbsNum = Number(manualCarbs) || 0;
+    let fatNum = Number(manualFat) || 0;
+    let finalPortion = manualPortion.trim() || '1 serving';
+
+    setIsSaving(true);
+
+    // If calories not entered, auto-calculate with Gemini AI on the fly
+    if (isNaN(calNum) || calNum <= 0) {
+      try {
+        const fullQuery = finalPortion && finalPortion !== '1 serving'
+          ? `${manualName.trim()} (${finalPortion})`
+          : manualName.trim();
+        const aiResult = await parseMealDescription(fullQuery, {
+          mealPeriod: { mealType: manualMealType, label: manualMealType, timeStr: '' },
+        });
+        if (aiResult && aiResult.calories > 0) {
+          calNum = Math.round(aiResult.calories);
+          protNum = Math.round(aiResult.protein || 0);
+          carbsNum = Math.round(aiResult.carbs || 0);
+          fatNum = Math.round(aiResult.fat || 0);
+          if (aiResult.portion) finalPortion = aiResult.portion;
+        } else {
+          Alert.alert('Could Not Estimate', 'Please enter calories manually.');
+          setIsSaving(false);
+          return;
+        }
+      } catch (aiErr) {
+        Alert.alert('Estimation Failed', aiErr?.message || 'Could not auto-calculate calories.');
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    if (calNum > 10000) {
       Alert.alert('Invalid Calories', 'Please enter realistic calories between 1 and 10,000.');
+      setIsSaving(false);
       return;
     }
     if (protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
       Alert.alert('Invalid Macros', 'Macronutrient values must be realistic positive numbers.');
+      setIsSaving(false);
       return;
     }
 
-    setIsSaving(true);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       await addMeal({
         name: manualName.trim(),
         meal_type: manualMealType,
-        portion: manualPortion.trim() || '1 serving',
+        portion: finalPortion,
         calories: calNum,
         protein: protNum,
         carbs: carbsNum,
@@ -534,6 +599,38 @@ export default function LogMealScreen({ navigation }) {
                     onChangeText={setManualName}
                     clearable
                   />
+
+                  {/* AI Auto-Estimate Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.aiManualEstimateBtn,
+                      (!manualName.trim() || isEstimatingManual) && styles.aiManualEstimateBtnDisabled,
+                    ]}
+                    onPress={handleEstimateManual}
+                    disabled={!manualName.trim() || isEstimatingManual}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Calculate calories and macros with Gemini AI"
+                  >
+                    {isEstimatingManual ? (
+                      <ActivityIndicator size="small" color={colors.sageBright} style={{ marginRight: 6 }} />
+                    ) : (
+                      <Ionicons
+                        name="sparkles"
+                        size={15}
+                        color={manualName.trim() ? colors.sageBright : colors.textTertiary}
+                        style={{ marginRight: 6 }}
+                      />
+                    )}
+                    <Text
+                      style={[
+                        styles.aiManualEstimateBtnText,
+                        (!manualName.trim() || isEstimatingManual) && styles.aiManualEstimateBtnTextDisabled,
+                      ]}
+                    >
+                      {isEstimatingManual ? 'Estimating with Gemini AI...' : 'Auto-Calculate Macros with AI'}
+                    </Text>
+                  </TouchableOpacity>
 
                   <Input
                     label="Portion"
@@ -871,5 +968,30 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  aiManualEstimateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(107, 155, 125, 0.4)',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: -4,
+    marginBottom: 14,
+  },
+  aiManualEstimateBtnDisabled: {
+    borderColor: colors.cardBorder,
+    opacity: 0.6,
+  },
+  aiManualEstimateBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.sageBright,
+  },
+  aiManualEstimateBtnTextDisabled: {
+    color: colors.textTertiary,
   },
 });

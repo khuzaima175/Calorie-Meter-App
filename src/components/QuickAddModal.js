@@ -11,11 +11,13 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Input from './Input';
 import Button from './Button';
+import { parseMealDescription } from '../services/geminiService';
 import { colors, radius, typography } from '../theme/colors';
 
 const MEAL_TYPES = [
@@ -41,6 +43,7 @@ export default function QuickAddModal({
   const [portion, setPortion] = useState(editMeal?.portion || '1 serving');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isEstimating, setIsEstimating] = useState(false);
 
   // Reset form when modal opens or editMeal changes
   useEffect(() => {
@@ -54,31 +57,98 @@ export default function QuickAddModal({
       setPortion(editMeal?.portion || '1 serving');
       setError('');
       setIsSaving(false);
+      setIsEstimating(false);
     }
   }, [visible, editMeal, initialMealType]);
 
-  const handleSave = async () => {
-    if (isSaving) return;
+  const handleEstimateNutrition = async () => {
+    const query = name.trim();
+    if (!query) {
+      setError('Please type a food or meal name first');
+      return;
+    }
+    setIsEstimating(true);
+    setError('');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      const fullQuery = portion.trim() && portion.trim() !== '1 serving'
+        ? `${query} (${portion.trim()})`
+        : query;
+      const result = await parseMealDescription(fullQuery, {
+        mealPeriod: { mealType, label: mealType, timeStr: '' },
+      });
+      if (result) {
+        if (result.calories != null) setCalories(String(Math.round(result.calories)));
+        if (result.protein != null) setProtein(String(Math.round(result.protein)));
+        if (result.carbs != null) setCarbs(String(Math.round(result.carbs)));
+        if (result.fat != null) setFat(String(Math.round(result.fat)));
+        if (result.portion && (!portion || portion === '1 serving')) {
+          setPortion(result.portion);
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+    } catch (err) {
+      setError(err?.message || 'Could not auto-estimate. Please check food name or enter manually.');
+    } finally {
+      setIsEstimating(false);
+    }
+  };
 
-    const calNum = Number(calories);
-    const protNum = Number(protein) || 0;
-    const carbsNum = Number(carbs) || 0;
-    const fatNum = Number(fat) || 0;
+  const handleSave = async () => {
+    if (isSaving || isEstimating) return;
 
     if (!name.trim()) {
       setError('Please enter a meal name');
       return;
     }
-    if (isNaN(calNum) || calNum <= 0 || calNum > 10000) {
+
+    let calNum = Number(calories);
+    let protNum = Number(protein) || 0;
+    let carbsNum = Number(carbs) || 0;
+    let fatNum = Number(fat) || 0;
+    let finalPortion = portion.trim() || '1 serving';
+
+    setIsSaving(true);
+    setError('');
+
+    // If calories not entered, auto-calculate with Gemini AI on the fly
+    if (isNaN(calNum) || calNum <= 0) {
+      try {
+        const fullQuery = finalPortion && finalPortion !== '1 serving'
+          ? `${name.trim()} (${finalPortion})`
+          : name.trim();
+        const aiResult = await parseMealDescription(fullQuery, {
+          mealPeriod: { mealType, label: mealType, timeStr: '' },
+        });
+        if (aiResult && aiResult.calories > 0) {
+          calNum = Math.round(aiResult.calories);
+          protNum = Math.round(aiResult.protein || 0);
+          carbsNum = Math.round(aiResult.carbs || 0);
+          fatNum = Math.round(aiResult.fat || 0);
+          if (aiResult.portion) finalPortion = aiResult.portion;
+        } else {
+          setError('Could not calculate calories. Please enter calories manually.');
+          setIsSaving(false);
+          return;
+        }
+      } catch (aiErr) {
+        setError(aiErr?.message || 'Could not auto-calculate. Please enter calories manually.');
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    if (calNum > 10000) {
       setError('Please enter realistic calories (1 - 10,000)');
+      setIsSaving(false);
       return;
     }
     if (protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
       setError('Macros must be positive realistic numbers');
+      setIsSaving(false);
       return;
     }
 
-    setIsSaving(true);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
@@ -91,7 +161,7 @@ export default function QuickAddModal({
         protein: protNum,
         carbs: carbsNum,
         fat: fatNum,
-        portion: portion.trim() || '1 serving',
+        portion: finalPortion,
         timestamp: editMeal?.timestamp || new Date().toISOString(),
       });
 
@@ -170,6 +240,38 @@ export default function QuickAddModal({
               }}
               clearable
             />
+
+            {/* AI Auto-Estimate Button */}
+            <TouchableOpacity
+              style={[
+                styles.aiEstimateBtn,
+                (!name.trim() || isEstimating) && styles.aiEstimateBtnDisabled,
+              ]}
+              onPress={handleEstimateNutrition}
+              disabled={!name.trim() || isEstimating}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Calculate calories and macros with Gemini AI"
+            >
+              {isEstimating ? (
+                <ActivityIndicator size="small" color={colors.sageBright} style={{ marginRight: 6 }} />
+              ) : (
+                <Ionicons
+                  name="sparkles"
+                  size={15}
+                  color={name.trim() ? colors.sageBright : colors.textTertiary}
+                  style={{ marginRight: 6 }}
+                />
+              )}
+              <Text
+                style={[
+                  styles.aiEstimateBtnText,
+                  (!name.trim() || isEstimating) && styles.aiEstimateBtnTextDisabled,
+                ]}
+              >
+                {isEstimating ? 'Estimating with Gemini AI...' : 'Auto-Calculate Macros with AI'}
+              </Text>
+            </TouchableOpacity>
 
             <Input
               label="Portion / Size"
@@ -306,5 +408,30 @@ const styles = StyleSheet.create({
   saveBtn: {
     marginTop: 10,
     marginBottom: 20,
+  },
+  aiEstimateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(107, 155, 125, 0.4)',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: -6,
+    marginBottom: 14,
+  },
+  aiEstimateBtnDisabled: {
+    borderColor: colors.cardBorder,
+    opacity: 0.6,
+  },
+  aiEstimateBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.sageBright,
+  },
+  aiEstimateBtnTextDisabled: {
+    color: colors.textTertiary,
   },
 });

@@ -80,11 +80,14 @@ function calculateMETCalories(met, weightKg, durationMins) {
 
 // 5. Clean JSON extractor
 function cleanJsonText(rawText) {
-  let cleaned = (rawText || '').trim();
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-  } else if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  if (!rawText || typeof rawText !== 'string') return '{}';
+  let cleaned = rawText.trim();
+  cleaned = cleaned.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
   return cleaned;
 }
@@ -280,6 +283,14 @@ test('JSON Text Cleaner: Strips markdown fenced code blocks safely', () => {
   const parsed = JSON.parse(cleaned);
   assert.equal(parsed.name, 'Biryani');
   assert.equal(parsed.calories, 550);
+});
+
+test('JSON Text Cleaner: Strips conversational prefixes and fences safely', () => {
+  const input = 'Here is your meal breakdown:\n```json\n{"name": "2 Ghee Parathas with 4 Chicken Wings", "calories": 950}\n```\nHope this helps!';
+  const cleaned = cleanJsonText(input);
+  const parsed = JSON.parse(cleaned);
+  assert.equal(parsed.name, '2 Ghee Parathas with 4 Chicken Wings');
+  assert.equal(parsed.calories, 950);
 });
 
 test('Schema Validation: Required food macro keys exist', () => {

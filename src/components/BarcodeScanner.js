@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -146,7 +148,11 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
         </View>
 
         {/* Bottom Manual Entry Drawer / Toggle */}
-        <View style={[styles.bottomControlsRow, { bottom: Math.max(insets.bottom, 24) + 12 }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[styles.bottomControlsRow, { bottom: Math.max(insets.bottom, 24) + 12 }]}
+          pointerEvents="box-none"
+        >
           {showManualInput ? (
             <View style={styles.manualBox}>
               <View style={styles.manualHeader}>
@@ -193,7 +199,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
               <Text style={styles.manualToggleText}>Type barcode manually</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </View>
   );
@@ -202,10 +208,12 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: 'transparent',
   },
   cameraView: {
     ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   overlayContainer: {
     ...StyleSheet.absoluteFillObject,

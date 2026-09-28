@@ -338,7 +338,12 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     }
 
     const data = await response.json();
-    const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    // Extract non-thought text parts (handles models with thinking parts)
+    const textParts = parts.filter((p) => !p.thought && typeof p.text === 'string' && p.text.trim());
+    const candidateText = textParts.length > 0
+      ? textParts.map((p) => p.text).join('')
+      : (parts[0]?.text || '');
     return candidateText;
   } catch (error) {
     // If it's already a quota, rate limit, or invalid key message, do not retry fallback
@@ -361,12 +366,17 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
 /**
  * Extracts and cleans JSON from raw markdown text
  */
-function cleanJsonText(rawText) {
+export function cleanJsonText(rawText) {
+  if (!rawText || typeof rawText !== 'string') return '{}';
   let cleaned = rawText.trim();
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-  } else if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  // Strip markdown code fences
+  cleaned = cleaned.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+
+  // Extract outermost JSON object { ... }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
   return cleaned;
 }
@@ -605,10 +615,15 @@ Return ONLY a valid JSON object:
     responseSchema: FOOD_ANALYSIS_SCHEMA,
   });
   try {
-    return JSON.parse(cleanJsonText(rawOutput));
+    const cleaned = cleanJsonText(rawOutput);
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed.health_tips)) {
+      parsed.health_tips = parsed.health_tips.join(' ');
+    }
+    return parsed;
   } catch (err) {
     console.error('Failed to parse Gemini text meal response:', rawOutput);
-    throw new Error('Could not parse meal description. Please specify quantity and food items.');
+    throw new Error('Could not calculate nutrition for meal. Please check the food description and try again.');
   }
 }
 
@@ -632,6 +647,7 @@ export const FOOD_ANALYSIS_SCHEMA = {
     confidence: { type: 'NUMBER' },
     health_score: { type: 'NUMBER' },
     dietary_tags: { type: 'ARRAY', items: { type: 'STRING' } },
+    ingredients: { type: 'ARRAY', items: { type: 'STRING' } },
     health_tips: { type: 'STRING' },
     is_no_food: { type: 'BOOLEAN' },
     is_water: { type: 'BOOLEAN' },
