@@ -97,17 +97,13 @@ const styles = StyleSheet.create({
   appContainer: {
     flex: 1,
     backgroundColor: '#09090B',
-    alignItems: Platform.OS === 'web' ? 'center' : 'stretch',
-    justifyContent: Platform.OS === 'web' ? 'center' : 'stretch',
+    ...(Platform.OS === 'web' && { alignItems: 'center', justifyContent: 'center' }),
   },
   mobileShell: {
     flex: 1,
-    width: '100%',
-    height: '100%',
-    alignSelf: 'stretch',
     maxWidth: Platform.OS === 'web' ? 460 : undefined,
+    width: '100%',
     backgroundColor: colors.background,
-    position: 'relative',
   },
 });
 

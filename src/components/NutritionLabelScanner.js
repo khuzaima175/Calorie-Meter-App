@@ -116,6 +116,8 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
           style={StyleSheet.absoluteFillObject}
           facing={facing}
           enableTorch={torch}
+          onCameraReady={() => console.log('LABEL CAMERA READY')}
+          onMountError={(e) => console.log('LABEL CAMERA MOUNT ERROR:', e?.nativeEvent || e)}
         />
       )}
 
@@ -216,11 +218,8 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
-    position: 'relative',
   },
   centerContainer: {
     flex: 1,

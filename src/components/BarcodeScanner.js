@@ -84,6 +84,8 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
             barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
           }}
           onBarcodeScanned={scanned || isProcessing ? undefined : handleBarcodeScanned}
+          onCameraReady={() => console.log('BARCODE CAMERA READY')}
+          onMountError={(e) => console.log('BARCODE CAMERA MOUNT ERROR:', e?.nativeEvent || e)}
         />
       )}
 
@@ -184,11 +186,8 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
-    position: 'relative',
   },
   centerContainer: {
     flex: 1,
