@@ -275,6 +275,9 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
 
   if (options.jsonMode) {
     generationConfig.responseMimeType = 'application/json';
+    if (options.responseSchema) {
+      generationConfig.responseSchema = options.responseSchema;
+    }
   }
 
   const body = {
@@ -466,7 +469,10 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
     },
   ];
 
-  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
+    jsonMode: true,
+    responseSchema: FOOD_ANALYSIS_SCHEMA,
+  });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
@@ -515,7 +521,10 @@ Extract the nutrition data and return ONLY a valid JSON object:
     },
   ];
 
-  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
+    jsonMode: true,
+    responseSchema: NUTRITION_LABEL_SCHEMA,
+  });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
@@ -576,7 +585,10 @@ Return ONLY a valid JSON object:
     },
   ];
 
-  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
+    jsonMode: true,
+    responseSchema: FOOD_ANALYSIS_SCHEMA,
+  });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
@@ -585,14 +597,78 @@ Return ONLY a valid JSON object:
   }
 }
 
+// ----------------------------------------------------
+// STRUCTURED OUTPUT SCHEMAS (Gemini Strict Schema Compliance)
+// ----------------------------------------------------
+
+export const FOOD_ANALYSIS_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    name: { type: 'STRING' },
+    meal_type: { type: 'STRING' },
+    portion: { type: 'STRING' },
+    calories: { type: 'NUMBER' },
+    protein: { type: 'NUMBER' },
+    carbs: { type: 'NUMBER' },
+    fat: { type: 'NUMBER' },
+    fiber: { type: 'NUMBER' },
+    sugar: { type: 'NUMBER' },
+    sodium: { type: 'NUMBER' },
+    confidence: { type: 'NUMBER' },
+  },
+  required: ['name', 'meal_type', 'portion', 'calories', 'protein', 'carbs', 'fat'],
+};
+
+export const NUTRITION_LABEL_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    name: { type: 'STRING' },
+    portion: { type: 'STRING' },
+    calories: { type: 'NUMBER' },
+    protein: { type: 'NUMBER' },
+    carbs: { type: 'NUMBER' },
+    fat: { type: 'NUMBER' },
+    fiber: { type: 'NUMBER' },
+    sugar: { type: 'NUMBER' },
+    sodium: { type: 'NUMBER' },
+    confidence: { type: 'NUMBER' },
+  },
+  required: ['name', 'portion', 'calories', 'protein', 'carbs', 'fat'],
+};
+
 /**
- * Sanitizes multi-turn chat history to strictly guarantee alternating roles (user -> model -> user)
+ * Estimates token count based on string length (~4 characters per token)
  */
-export function sanitizeChatHistory(history, newTurnText) {
+export function estimateTokens(str = '') {
+  if (typeof str !== 'string') return 0;
+  return Math.ceil(str.length / 4);
+}
+
+/**
+ * Sanitizes multi-turn chat history with a strict token budget (~8000 tokens ceiling)
+ * to avoid 400 INVALID_ARGUMENT errors on long chats
+ */
+export function sanitizeChatHistory(history, newTurnText, maxTokenBudget = 8000) {
   const contents = [];
   let lastRole = null;
 
-  for (const m of history || []) {
+  // Count backwards to include only what fits in the token budget
+  let currentTokens = estimateTokens(newTurnText || '');
+  const budgetedTurns = [];
+
+  for (let i = (history || []).length - 1; i >= 0; i--) {
+    const msg = history[i];
+    const text = (msg?.text || '').trim();
+    if (!text) continue;
+    const tokens = estimateTokens(text);
+    if (currentTokens + tokens > maxTokenBudget && budgetedTurns.length > 0) {
+      break;
+    }
+    budgetedTurns.unshift(msg);
+    currentTokens += tokens;
+  }
+
+  for (const m of budgetedTurns) {
     const text = (m?.text || '').trim();
     if (!text) continue;
     const role = m.role === 'assistant' || m.role === 'model' ? 'model' : 'user';
@@ -636,15 +712,15 @@ User Profile:
 - Age: ${profile.age || 25}, Gender: ${profile.gender || 'Not specified'}, Weight: ${profile.weight_kg || 70}kg, Height: ${profile.height_cm || 175}cm
 - Primary Goal: ${profile.goal_type || 'Healthy Balance'} (Target: ${goals.calories || 2000} kcal/day)
 - Today's Progress: Consumed ${totals.calories || 0} kcal (Remaining: ${remaining.calories ?? (goals.calories - (totals.calories || 0))} kcal)
-- Today's Macros: Protein ${totals.protein || 0}g / ${goals.protein || 140}g, Carbs ${totals.carbs || 0}g / ${goals.carbs || 220}g, Fat ${totals.fat || 0}g / ${goals.fat || 65}g
-
+- Today's Macros: Protein ${totals.protein || 0}g / ${goals.protein || 140}g, Carbs ${totals.carbs || 0}g / ${goals.carbs || 220}g, Fat ${totals.fat || 65}g
+ 
 Persona & Desi Nutritional Knowledge:
 - Warm, encouraging, concise, and deeply practical.
 - Recommend realistic Pakistani food swaps (e.g. swapping 2 oily parathas for 1 whole wheat roti + boiled egg / chicken tikka, reducing excess cooking oil / tarri in karahi, roasted chana for snacking, plain dahi / raita instead of mayonnaise, green tea / kahwa instead of sugary chai).
 - Never scold or shame. Give concrete meal ideas and macro adjustments for local cooking.
 - Keep responses under 220 words unless specifically asked for a full recipe.`;
 
-  const contents = sanitizeChatHistory(chatHistory, userMessage);
+  const contents = sanitizeChatHistory(chatHistory, userMessage, 7500);
   return await callGemini(contents, systemPrompt);
 }
 
@@ -737,7 +813,9 @@ Return ONLY valid JSON with this structure:
 }`;
 
   const contents = [{ role: 'user', parts: [{ text: 'Generate meal plan matching these exact macros.' }] }];
-  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, { jsonMode: true });
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
+    jsonMode: true,
+  });
   try {
     return JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
@@ -745,3 +823,4 @@ Return ONLY valid JSON with this structure:
     throw new Error('Could not generate meal plan. Please try again.');
   }
 }
+

@@ -40,11 +40,12 @@ export default function QuickAddModal({
   const [fat, setFat] = useState(editMeal?.fat ? String(editMeal.fat) : '');
   const [portion, setPortion] = useState(editMeal?.portion || '1 serving');
   const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Reset form when modal opens or editMeal changes
   useEffect(() => {
     if (visible) {
-      setMealType(editMeal?.meal_type || initialMealType);
+      setMealType(editMeal?.meal_type || initialMealType || 'breakfast');
       setName(editMeal?.name || '');
       setCalories(editMeal ? String(editMeal.calories) : '');
       setProtein(editMeal?.protein ? String(editMeal.protein) : '');
@@ -52,10 +53,13 @@ export default function QuickAddModal({
       setFat(editMeal?.fat ? String(editMeal.fat) : '');
       setPortion(editMeal?.portion || '1 serving');
       setError('');
+      setIsSaving(false);
     }
   }, [visible, editMeal, initialMealType]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
+
     const calNum = Number(calories);
     const protNum = Number(protein) || 0;
     const carbsNum = Number(carbs) || 0;
@@ -74,22 +78,29 @@ export default function QuickAddModal({
       return;
     }
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setIsSaving(true);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-    onSave({
-      ...(editMeal || {}),
-      id: editMeal?.id,
-      name: name.trim(),
-      meal_type: mealType,
-      calories: calNum,
-      protein: protNum,
-      carbs: carbsNum,
-      fat: fatNum,
-      portion: portion.trim() || '1 serving',
-      timestamp: editMeal?.timestamp || new Date().toISOString(),
-    });
+      await onSave({
+        ...(editMeal || {}),
+        id: editMeal?.id,
+        name: name.trim(),
+        meal_type: mealType,
+        calories: calNum,
+        protein: protNum,
+        carbs: carbsNum,
+        fat: fatNum,
+        portion: portion.trim() || '1 serving',
+        timestamp: editMeal?.timestamp || new Date().toISOString(),
+      });
 
-    onClose();
+      onClose();
+    } catch (err) {
+      setError(err?.message || 'Could not save meal.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -216,6 +227,8 @@ export default function QuickAddModal({
             <Button
               title={editMeal ? 'Save Changes' : 'Log Meal'}
               onPress={handleSave}
+              loading={isSaving}
+              disabled={isSaving}
               size="lg"
               style={styles.saveBtn}
             />

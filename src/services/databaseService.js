@@ -705,13 +705,15 @@ export async function exportAllDataJSON() {
   if (IS_WEB || !dbInstance) {
     return JSON.stringify(
       {
-        version: 1,
+        schema_version: 2,
+        app: 'CalorieSnap Pro',
         exportedAt: new Date().toISOString(),
         profile: webStore.profile,
         goals: webStore.goals,
         meals: webStore.meals,
         exercises: webStore.exercises,
         water_intake: webStore.water_intake,
+        notes: 'Image URIs reference local device storage. To preserve image media across new physical devices, re-attach photos after restore.',
       },
       null,
       2
@@ -727,13 +729,15 @@ export async function exportAllDataJSON() {
 
   return JSON.stringify(
     {
-      version: 1,
+      schema_version: 2,
+      app: 'CalorieSnap Pro',
       exportedAt: new Date().toISOString(),
       profile,
       goals,
       meals,
       exercises,
       water_intake,
+      notes: 'Image URIs reference local device storage. To preserve image media across new physical devices, re-attach photos after restore.',
     },
     null,
     2
@@ -741,7 +745,7 @@ export async function exportAllDataJSON() {
 }
 
 /**
- * Imports database records from a structured JSON backup with validation
+ * Imports database records from a structured JSON backup with schema-version normalization
  */
 export async function importAllDataJSON(jsonString) {
   let parsed;
@@ -755,14 +759,63 @@ export async function importAllDataJSON(jsonString) {
     throw new Error('Malformed backup object.');
   }
 
+  const schemaVersion = parsed.schema_version || parsed.version || 1;
+
   if (IS_WEB || !dbInstance) {
-    if (parsed.profile) webStore.profile = { ...DEFAULT_PROFILE, ...parsed.profile };
-    if (parsed.goals) webStore.goals = { ...DEFAULT_GOALS, ...parsed.goals };
-    if (Array.isArray(parsed.meals)) webStore.meals = parsed.meals;
-    if (Array.isArray(parsed.exercises)) webStore.exercises = parsed.exercises;
-    if (Array.isArray(parsed.water_intake)) webStore.water_intake = parsed.water_intake;
+    if (parsed.profile) {
+      webStore.profile = {
+        ...DEFAULT_PROFILE,
+        ...parsed.profile,
+        custom_api_key: parsed.profile.custom_api_key || '',
+      };
+    }
+    if (parsed.goals) {
+      webStore.goals = {
+        ...DEFAULT_GOALS,
+        ...parsed.goals,
+      };
+    }
+    if (Array.isArray(parsed.meals)) {
+      webStore.meals = parsed.meals.map((m) => ({
+        id: m.id || Date.now() + Math.floor(Math.random() * 1000),
+        date: m.date || getTodayString(),
+        timestamp: m.timestamp || new Date().toISOString(),
+        meal_type: m.meal_type || 'snack',
+        name: m.name || 'Imported Meal',
+        calories: Number(m.calories) || 0,
+        protein: Number(m.protein) || 0,
+        carbs: Number(m.carbs) || 0,
+        fat: Number(m.fat) || 0,
+        fiber: Number(m.fiber) || 0,
+        sugar: Number(m.sugar) || 0,
+        sodium: Number(m.sodium) || 0,
+        portion: m.portion || '1 serving',
+        image_uri: m.image_uri || null,
+      }));
+    }
+    if (Array.isArray(parsed.exercises)) {
+      webStore.exercises = parsed.exercises.map((e) => ({
+        id: e.id || Date.now() + Math.floor(Math.random() * 1000),
+        date: e.date || getTodayString(),
+        timestamp: e.timestamp || new Date().toISOString(),
+        exercise_name: e.exercise_name || 'Workout',
+        duration_minutes: Number(e.duration_minutes) || 0,
+        calories_burned: Number(e.calories_burned) || 0,
+        intensity: e.intensity || 'moderate',
+        category: e.category || 'cardio',
+      }));
+    }
+    if (Array.isArray(parsed.water_intake)) {
+      webStore.water_intake = parsed.water_intake.map((w) => ({
+        id: w.id || Date.now() + Math.floor(Math.random() * 1000),
+        date: w.date || getTodayString(),
+        timestamp: w.timestamp || new Date().toISOString(),
+        amount_ml: Number(w.amount_ml) || 250,
+      }));
+    }
     saveWebStore();
     return {
+      schemaVersion,
       mealCount: webStore.meals.length,
       exerciseCount: webStore.exercises.length,
       waterCount: webStore.water_intake.length,
@@ -771,7 +824,7 @@ export async function importAllDataJSON(jsonString) {
 
   const db = await getDB();
 
-  // Clean existing data
+  // Clean existing tables
   await db.execAsync(`
     DELETE FROM meals;
     DELETE FROM exercises;
@@ -779,16 +832,37 @@ export async function importAllDataJSON(jsonString) {
   `);
 
   if (parsed.profile) {
-    await saveProfile(parsed.profile);
+    await saveProfile({
+      ...DEFAULT_PROFILE,
+      ...parsed.profile,
+      custom_api_key: parsed.profile.custom_api_key || '',
+    });
   }
   if (parsed.goals) {
-    await saveGoals(parsed.goals);
+    await saveGoals({
+      ...DEFAULT_GOALS,
+      ...parsed.goals,
+    });
   }
 
   let mealCount = 0;
   if (Array.isArray(parsed.meals)) {
     for (const m of parsed.meals) {
-      await insertMeal(m);
+      await insertMeal({
+        date: m.date || getTodayString(),
+        timestamp: m.timestamp || new Date().toISOString(),
+        meal_type: m.meal_type || 'snack',
+        name: m.name || 'Imported Meal',
+        calories: Number(m.calories) || 0,
+        protein: Number(m.protein) || 0,
+        carbs: Number(m.carbs) || 0,
+        fat: Number(m.fat) || 0,
+        fiber: Number(m.fiber) || 0,
+        sugar: Number(m.sugar) || 0,
+        sodium: Number(m.sodium) || 0,
+        portion: m.portion || '1 serving',
+        image_uri: m.image_uri || null,
+      });
       mealCount++;
     }
   }
@@ -796,7 +870,15 @@ export async function importAllDataJSON(jsonString) {
   let exerciseCount = 0;
   if (Array.isArray(parsed.exercises)) {
     for (const e of parsed.exercises) {
-      await insertExercise(e);
+      await insertExercise({
+        date: e.date || getTodayString(),
+        timestamp: e.timestamp || new Date().toISOString(),
+        exercise_name: e.exercise_name || 'Workout',
+        duration_minutes: Number(e.duration_minutes) || 0,
+        calories_burned: Number(e.calories_burned) || 0,
+        intensity: e.intensity || 'moderate',
+        category: e.category || 'cardio',
+      });
       exerciseCount++;
     }
   }
@@ -804,12 +886,12 @@ export async function importAllDataJSON(jsonString) {
   let waterCount = 0;
   if (Array.isArray(parsed.water_intake)) {
     for (const w of parsed.water_intake) {
-      await addWaterIntake(w.amount_ml, w.date);
+      await addWaterIntake(Number(w.amount_ml) || 250, w.date || getTodayString());
       waterCount++;
     }
   }
 
-  return { mealCount, exerciseCount, waterCount };
+  return { schemaVersion, mealCount, exerciseCount, waterCount };
 }
 
 /**

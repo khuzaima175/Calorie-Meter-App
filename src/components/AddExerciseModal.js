@@ -68,23 +68,34 @@ export default function AddExerciseModal({
     }
   };
 
-  const handleSave = () => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+
     const name = customName.trim() || selectedPreset?.name || 'Workout';
-    const mins = Number(duration) || 30;
-    const cals = Number(caloriesBurned) || 0;
+    const mins = Math.max(1, Math.min(720, Number(duration) || 30));
+    const cals = Math.max(0, Math.min(5000, Number(caloriesBurned) || 0));
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setIsSaving(true);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-    onSave({
-      exercise_name: name,
-      duration_minutes: mins,
-      calories_burned: cals,
-      intensity,
-      category,
-      timestamp: new Date().toISOString(),
-    });
+      await onSave({
+        exercise_name: name,
+        duration_minutes: mins,
+        calories_burned: cals,
+        intensity,
+        category,
+        timestamp: new Date().toISOString(),
+      });
 
-    onClose();
+      onClose();
+    } catch (err) {
+      console.warn('Failed to save exercise:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -210,6 +221,8 @@ export default function AddExerciseModal({
             <Button
               title="Log Exercise"
               onPress={handleSave}
+              loading={isSaving}
+              disabled={isSaving}
               size="lg"
               style={styles.saveBtn}
             />

@@ -11,6 +11,7 @@ import { useNutritionStore } from './stores/useNutritionStore';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingShimmer from './components/LoadingShimmer';
 import ErrorBoundary from './components/ErrorBoundary';
+import OfflineBanner from './components/OfflineBanner';
 import { colors } from './theme/colors';
 
 // Ensure full viewport on Web browser
@@ -74,6 +75,7 @@ function AppBootstrapper() {
     <View style={styles.appContainer}>
       <StatusBar style="light" backgroundColor="transparent" translucent />
       <View style={styles.mobileShell}>
+        <OfflineBanner />
         <TabNavigator />
       </View>
     </View>
