@@ -39,24 +39,40 @@ export default function FoodAnalysisResult({
   const [fat, setFat] = useState(String(analysis?.fat || 0));
   const [fiber, setFiber] = useState(String(analysis?.fiber || 0));
 
-  // Non-food / empty recognition check
+  const isWater =
+    Boolean(analysis?.is_water) ||
+    (name.toLowerCase().includes('water') && !name.toLowerCase().includes('watermelon')) ||
+    name.toLowerCase().includes('hydration') ||
+    name.toLowerCase().includes('drinking water') ||
+    name.toLowerCase().includes('glass of water');
+
+  const detectedMl =
+    analysis?.water_ml ||
+    (portion.includes('ml') ? parseInt(portion.replace(/\D/g, ''), 10) : 250) ||
+    250;
+  const [waterMl, setWaterMl] = useState(detectedMl);
+
+  // Non-food / empty recognition check (water is valid hydration!)
   const isNoFoodDetected =
-    !analysis?.name ||
-    analysis.name.toLowerCase().includes('no food') ||
-    (Number(calories) === 0 && (!name.trim() || name.toLowerCase().includes('no food')));
+    !isWater &&
+    (!analysis?.name ||
+      analysis.name.toLowerCase().includes('no food') ||
+      (Number(calories) === 0 && (!name.trim() || name.toLowerCase().includes('no food'))));
 
   const handleConfirmSave = () => {
     if (isNoFoodDetected) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     onSave({
-      name: name.trim() || 'Logged Meal',
+      name: name.trim() || (isWater ? 'Glass of Water' : 'Logged Meal'),
       meal_type: mealType,
-      portion: portion.trim() || '1 serving',
+      portion: isWater ? `${waterMl} ml` : portion.trim() || '1 serving',
       calories: Number(calories) || 0,
       protein: Number(protein) || 0,
       carbs: Number(carbs) || 0,
       fat: Number(fat) || 0,
       fiber: Number(fiber) || 0,
+      is_water: isWater,
+      water_ml: isWater ? waterMl : 0,
       image_uri: imageUri || null,
       timestamp: new Date().toISOString(),
     });
@@ -112,8 +128,43 @@ export default function FoodAnalysisResult({
 
       {/* Main Analysis Card */}
       <View style={styles.card}>
+        {/* Hydration / Water Detection Banner */}
+        {isWater && (
+          <View style={styles.hydrationCard}>
+            <View style={styles.hydrationHeader}>
+              <View style={styles.waterDropIcon}>
+                <Ionicons name="water" size={20} color="#4EA8DE" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.hydrationTitle}>Drinking Water Detected</Text>
+                <Text style={styles.hydrationSub}>
+                  Will automatically update your Daily Hydration Tracker on Dashboard
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.waterVolumeLabel}>Select Volume:</Text>
+            <View style={styles.volumeChipsRow}>
+              {[150, 250, 500, 750, 1000].map((ml) => {
+                const isSel = waterMl === ml;
+                return (
+                  <TouchableOpacity
+                    key={ml}
+                    style={[styles.volumeChip, isSel && styles.volumeChipActive]}
+                    onPress={() => setWaterMl(ml)}
+                  >
+                    <Text style={[styles.volumeChipText, isSel && styles.volumeChipTextActive]}>
+                      {ml}ml
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Health Score & Tags */}
-        {!isNoFoodDetected && (
+        {!isNoFoodDetected && !isWater && (
           <View style={styles.scoreRow}>
             {analysis?.health_score ? (
               <View style={styles.healthScorePill}>
@@ -131,33 +182,37 @@ export default function FoodAnalysisResult({
           </View>
         )}
 
-        {/* Meal Type Selection */}
-        <Text style={styles.sectionHeading}>Meal Category</Text>
-        <View style={styles.typeRow}>
-          {MEAL_TYPES.map((t) => {
-            const isSelected = mealType === t.key;
-            return (
-              <TouchableOpacity
-                key={t.key}
-                style={[styles.typePill, isSelected && styles.typePillActive]}
-                onPress={() => setMealType(t.key)}
-              >
-                <Text
-                  style={[
-                    styles.typePillText,
-                    isSelected && styles.typePillTextActive,
-                  ]}
-                >
-                  {t.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {/* Meal Type Selection (only for food meals) */}
+        {!isWater && (
+          <>
+            <Text style={styles.sectionHeading}>Meal Category</Text>
+            <View style={styles.typeRow}>
+              {MEAL_TYPES.map((t) => {
+                const isSelected = mealType === t.key;
+                return (
+                  <TouchableOpacity
+                    key={t.key}
+                    style={[styles.typePill, isSelected && styles.typePillActive]}
+                    onPress={() => setMealType(t.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.typePillText,
+                        isSelected && styles.typePillTextActive,
+                      ]}
+                    >
+                      {t.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
 
         {/* Name & Portion */}
         <Input
-          label="Detected Food / Meal"
+          label="Detected Item"
           value={name}
           onChangeText={setName}
           clearable
@@ -222,7 +277,13 @@ export default function FoodAnalysisResult({
         {/* Action Buttons */}
         <View style={styles.btnRow}>
           <Button
-            title={isNoFoodDetected ? 'Cannot Log (No Food)' : 'Log to Daily Intake'}
+            title={
+              isNoFoodDetected
+                ? 'Cannot Log (No Food)'
+                : isWater
+                ? `Log +${waterMl}ml to Hydration Tracker`
+                : 'Log to Daily Intake'
+            }
             onPress={handleConfirmSave}
             disabled={isNoFoodDetected}
             size="lg"
@@ -425,5 +486,69 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     paddingVertical: 8,
+  },
+  hydrationCard: {
+    backgroundColor: 'rgba(78, 168, 222, 0.12)',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(78, 168, 222, 0.3)',
+    padding: 14,
+    marginBottom: 16,
+  },
+  hydrationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  waterDropIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(78, 168, 222, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  hydrationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4EA8DE',
+  },
+  hydrationSub: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  waterVolumeLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  volumeChipsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  volumeChip: {
+    flex: 1,
+    paddingVertical: 6,
+    marginHorizontal: 2,
+    borderRadius: radius.sm,
+    backgroundColor: colors.cardElevated,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  volumeChipActive: {
+    backgroundColor: '#4EA8DE',
+    borderColor: '#4EA8DE',
+  },
+  volumeChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  volumeChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 });

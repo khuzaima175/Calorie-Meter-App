@@ -31,9 +31,9 @@ import { lookupBarcode } from '../services/barcodeService';
 import { colors, radius, typography } from '../theme/colors';
 
 const TABS = [
-  { key: 'photo', label: 'Photo AI', icon: 'camera-outline' },
-  { key: 'text', label: 'Text AI', icon: 'text-outline' },
-  { key: 'label', label: 'Label OCR', icon: 'document-text-outline' },
+  { key: 'photo', label: 'Photo', icon: 'camera-outline' },
+  { key: 'text', label: 'Text', icon: 'text-outline' },
+  { key: 'label', label: 'Label', icon: 'document-text-outline' },
   { key: 'barcode', label: 'Barcode', icon: 'barcode-outline' },
   { key: 'manual', label: 'Manual', icon: 'create-outline' },
 ];
@@ -48,6 +48,7 @@ const MEAL_TYPES = [
 export default function LogMealScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const addMeal = useNutritionStore((s) => s.addMeal);
+  const logWater = useNutritionStore((s) => s.logWater);
 
   const [activeTab, setActiveTab] = useState('photo');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -197,7 +198,11 @@ export default function LogMealScreen({ navigation }) {
 
   // Save Confirmed AI Analysis Result
   const handleSaveAnalysisResult = async (finalMealData) => {
-    await addMeal(finalMealData);
+    if (finalMealData.is_water) {
+      await logWater(finalMealData.water_ml || 250);
+    } else {
+      await addMeal(finalMealData);
+    }
     setAnalysisResult(null);
     setCapturedImageUri(null);
     navigation.navigate('Dashboard');
@@ -232,7 +237,7 @@ export default function LogMealScreen({ navigation }) {
           />
         )}
 
-        {/* 2. Floating Top Header & Tab Pills (respects insets.top) */}
+        {/* 2. Floating Top Header & 5-Column Segmented Bar (respects insets.top) */}
         <View style={[styles.floatingHeaderWrapper, { top: insets.top + 8 }]}>
           <TouchableOpacity
             style={styles.closeCameraBtn}
@@ -241,40 +246,38 @@ export default function LogMealScreen({ navigation }) {
           >
             <Ionicons name="close" size={18} color="#FFFFFF" />
           </TouchableOpacity>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabScrollContent}
-          >
+
+          <View style={styles.segmentedTabsContainer}>
             {TABS.map((tab) => {
               const isActive = activeTab === tab.key;
               return (
                 <TouchableOpacity
                   key={tab.key}
                   style={[
-                    styles.cameraTabBtn,
-                    isActive && styles.cameraTabBtnActive,
+                    styles.segmentedTabBtn,
+                    isActive && styles.segmentedTabBtnActive,
                   ]}
                   onPress={() => handleTabChange(tab.key)}
                   activeOpacity={0.7}
                 >
                   <Ionicons
                     name={tab.icon}
-                    size={15}
-                    color={isActive ? colors.textInverse : '#FFFFFF'}
+                    size={14}
+                    color={isActive ? colors.textInverse : 'rgba(255, 255, 255, 0.7)'}
                   />
                   <Text
                     style={[
-                      styles.cameraTabText,
-                      isActive && styles.cameraTabTextActive,
+                      styles.segmentedTabText,
+                      isActive && styles.segmentedTabTextActive,
                     ]}
+                    numberOfLines={1}
                   >
                     {tab.label}
                   </Text>
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         </View>
 
         {/* 3. Processing Overlay */}
@@ -297,47 +300,68 @@ export default function LogMealScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
-        {/* Header Title */}
+        {/* Header Title with Back Button */}
         <View style={styles.header}>
-          <Text style={styles.titleText}>
-            {analysisResult ? 'Review Nutrition' : 'Log Nutrition'}
-          </Text>
-          <Text style={styles.subtitleText}>
-            {analysisResult
-              ? 'Verify AI detected macronutrients and add to diary'
-              : 'Snap a photo, scan a barcode, or describe your meal'}
-          </Text>
+          <View style={styles.formHeaderRow}>
+            <TouchableOpacity
+              style={styles.formBackBtn}
+              onPress={() => {
+                if (analysisResult) {
+                  setAnalysisResult(null);
+                  setCapturedImageUri(null);
+                } else {
+                  navigation.navigate('Dashboard');
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.titleText}>
+                {analysisResult ? 'Review Nutrition' : 'Log Nutrition'}
+              </Text>
+              <Text style={styles.subtitleText} numberOfLines={1}>
+                {analysisResult
+                  ? 'Verify detected macronutrients and add to diary'
+                  : 'Snap a photo, scan a barcode, or describe meal'}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {/* 5-Tab Mode Selector Pills (When not reviewing) */}
+        {/* 5-Tab Mode Selector (When not reviewing) */}
         {!analysisResult && (
           <View style={styles.tabBarContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tabScrollContent}
-            >
+            <View style={styles.segmentedTabsContainerForm}>
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.key;
                 return (
                   <TouchableOpacity
                     key={tab.key}
-                    style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+                    style={[styles.segmentedTabBtnForm, isActive && styles.segmentedTabBtnFormActive]}
                     onPress={() => handleTabChange(tab.key)}
                     activeOpacity={0.7}
                   >
                     <Ionicons
                       name={tab.icon}
-                      size={15}
+                      size={14}
                       color={isActive ? colors.textInverse : colors.textSecondary}
                     />
-                    <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                    <Text
+                      style={[
+                        styles.segmentedTabTextForm,
+                        isActive && styles.segmentedTabTextFormActive,
+                      ]}
+                      numberOfLines={1}
+                    >
                       {tab.label}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </View>
           </View>
         )}
 
@@ -566,6 +590,50 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 6,
   },
+  segmentedTabsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: radius.full,
+    padding: 2,
+  },
+  segmentedTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    borderRadius: radius.full,
+  },
+  segmentedTabBtnActive: {
+    backgroundColor: colors.sageBright,
+  },
+  segmentedTabText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginLeft: 3,
+  },
+  segmentedTabTextActive: {
+    color: colors.textInverse,
+    fontWeight: '700',
+  },
+  formHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  formBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.cardElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
   header: {
     marginBottom: 12,
   },
@@ -580,38 +648,35 @@ const styles = StyleSheet.create({
   tabBarContainer: {
     marginBottom: 12,
   },
-  tabScrollContent: {
+  segmentedTabsContainerForm: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.cardBackground,
+    borderRadius: radius.full,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
-  tabBtn: {
+  segmentedTabBtnForm: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 14,
     borderRadius: radius.full,
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    marginRight: 6,
   },
-  cameraTabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: radius.full,
-    marginRight: 4,
-  },
-  tabBtnActive: {
+  segmentedTabBtnFormActive: {
     backgroundColor: colors.sageBright,
-    borderColor: colors.sageBright,
   },
-  cameraTabBtnActive: {
-    backgroundColor: colors.sageBright,
+  segmentedTabTextForm: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginLeft: 3,
+  },
+  segmentedTabTextFormActive: {
+    color: colors.textInverse,
+    fontWeight: '700',
   },
   tabText: {
     fontSize: 12,

@@ -61,18 +61,18 @@ export default function ActivityScreen() {
       >
         {/* Header */}
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.titleText}>Activity & Workouts</Text>
-            <Text style={styles.subtitleText}>
-              Track calories burned and daily active movement
+          <View style={styles.headerTextCol}>
+            <Text style={styles.titleText} numberOfLines={1}>Activity & Workouts</Text>
+            <Text style={styles.subtitleText} numberOfLines={1}>
+              Track calories burned and movement
             </Text>
           </View>
 
           <Button
-            title="Add Workout"
-            iconLeft={<Ionicons name="add" size={16} color={colors.textInverse} />}
+            title="+ Add Workout"
             onPress={() => setModalVisible(true)}
             size="sm"
+            style={styles.addWorkoutBtn}
           />
         </View>
 
@@ -174,8 +174,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  headerTextCol: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  addWorkoutBtn: {
+    flexShrink: 0,
+    paddingHorizontal: 12,
+  },
   titleText: {
     ...typography.title2,
+    fontSize: 20,
   },
   subtitleText: {
     ...typography.caption,

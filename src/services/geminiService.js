@@ -128,9 +128,9 @@ export async function analyzeFoodPhoto(base64Image, mimeType = 'image/jpeg') {
   const systemPrompt = `You are a certified clinical sports dietitian and computer vision food expert.
 Analyze the meal photograph and return ONLY a valid, raw JSON object (without markdown code fences) with the exact structure:
 {
-  "name": "Short descriptive meal title (e.g. Avocado Toast with Poached Egg)",
+  "name": "Short descriptive meal title (e.g. Avocado Toast with Poached Egg or Glass of Water)",
   "meal_type": "breakfast" | "lunch" | "dinner" | "snack",
-  "portion": "e.g. 2 slices (280g)",
+  "portion": "e.g. 2 slices (280g) or 1 glass (250ml)",
   "calories": 420,
   "protein": 18,
   "carbs": 38,
@@ -140,6 +140,8 @@ Analyze the meal photograph and return ONLY a valid, raw JSON object (without ma
   "sodium": 380,
   "health_score": 8,
   "confidence": 0.92,
+  "is_water": true if the item is plain drinking water or zero-calorie hydration, false otherwise,
+  "water_ml": estimated volume in ml (e.g. 250 for standard glass, 500 for standard bottle) if water/beverage, otherwise 0,
   "ingredients": ["1 Hass avocado", "2 slices sourdough", "1 pasture-raised egg"],
   "dietary_tags": ["High Fiber", "Healthy Fats", "Vegetarian"],
   "health_tips": "Great source of monounsaturated fats. Pair with extra spinach for added micronutrients."
