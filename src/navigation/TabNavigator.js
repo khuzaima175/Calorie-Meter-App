@@ -78,66 +78,69 @@ export default function TabNavigator() {
   // Ensure bottom tab bar derives height and padding directly from insets.bottom
   const bottomPad = Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPad;
+  const hideTabBar = activeRoute === 'LogMeal';
 
   return (
     <View style={styles.container}>
       {/* Active Screen View */}
       <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
 
-      {/* Docked Bottom Tab Bar matching Mobile Voice Recorder architecture */}
-      <View
-        style={[
-          styles.tabBar,
-          {
-            paddingBottom: bottomPad,
-            height: tabBarHeight,
-          },
-        ]}
-      >
-        {TABS.map((tab) => {
-          const isActive = activeRoute === tab.key;
+      {/* Docked Bottom Tab Bar (hidden when camera/logging viewfinder is active) */}
+      {!hideTabBar && (
+        <View
+          style={[
+            styles.tabBar,
+            {
+              paddingBottom: bottomPad,
+              height: tabBarHeight,
+            },
+          ]}
+        >
+          {TABS.map((tab) => {
+            const isActive = activeRoute === tab.key;
 
-          if (tab.isCenterAction) {
+            if (tab.isCenterAction) {
+              return (
+                <View key={tab.key} style={styles.tabSlot}>
+                  <TouchableOpacity
+                    style={styles.centerBtnOuter}
+                    onPress={() => handleTabPress(tab.key)}
+                    activeOpacity={0.85}
+                  >
+                    <Animated.View style={[styles.centerBtnInner, { transform: [{ scale: centerBtnScale }] }]}>
+                      <Ionicons name="camera-outline" size={22} color={colors.textInverse} />
+                    </Animated.View>
+                  </TouchableOpacity>
+                </View>
+              );
+            }
+
             return (
-              <View key={tab.key} style={styles.tabSlot}>
-                <TouchableOpacity
-                  style={styles.centerBtnOuter}
-                  onPress={() => handleTabPress(tab.key)}
-                  activeOpacity={0.85}
-                >
-                  <Animated.View style={[styles.centerBtnInner, { transform: [{ scale: centerBtnScale }] }]}>
-                    <Ionicons name="camera-outline" size={22} color={colors.textInverse} />
-                  </Animated.View>
-                </TouchableOpacity>
-              </View>
-            );
-          }
-
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={styles.tabSlot}
-              onPress={() => handleTabPress(tab.key)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={isActive ? tab.activeIcon : tab.icon}
-                size={22}
-                color={isActive ? colors.sageBright : colors.textTertiary}
-              />
-              <Text
-                style={[
-                  styles.tabLabel,
-                  isActive && styles.tabLabelActive,
-                ]}
+              <TouchableOpacity
+                key={tab.key}
+                style={styles.tabSlot}
+                onPress={() => handleTabPress(tab.key)}
+                activeOpacity={0.7}
               >
-                {tab.label}
-              </Text>
-              {isActive && <View style={styles.activeIndicatorDot} />}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+                <Ionicons
+                  name={isActive ? tab.activeIcon : tab.icon}
+                  size={22}
+                  color={isActive ? colors.sageBright : colors.textTertiary}
+                />
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    isActive && styles.tabLabelActive,
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+                {isActive && <View style={styles.activeIndicatorDot} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }

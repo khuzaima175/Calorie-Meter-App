@@ -82,8 +82,6 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
     );
   }
 
-  const { width: screenW, height: screenH } = Dimensions.get('window');
-
   return (
     <View
       style={styles.container}
@@ -105,13 +103,13 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
         />
       )}
 
-      {/* 2. Full-screen overlay pinned to window dimensions */}
-      <View style={[styles.fullScreenOverlay, { width: screenW, height: screenH }]} pointerEvents="box-none">
+      {/* 2. Full-Screen HUD Overlay */}
+      <View style={styles.overlayContainer} pointerEvents="box-none">
         {/* Top Controls Row */}
         <View
           style={[
             styles.topControlsRow,
-            { top: insets.top + 54 },
+            { top: insets.top + 60 },
           ]}
         >
           <TouchableOpacity
@@ -150,7 +148,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
         </View>
 
         {/* Bottom Manual Entry Drawer / Toggle */}
-        <View style={[styles.bottomControlsRow, { bottom: 20 }]}>
+        <View style={[styles.bottomControlsRow, { bottom: Math.max(insets.bottom, 24) + 12 }]}>
           {showManualInput ? (
             <View style={styles.manualBox}>
               <View style={styles.manualHeader}>
@@ -201,12 +199,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   cameraView: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
-  fullScreenOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
   },
   centerContainer: {
     flex: 1,

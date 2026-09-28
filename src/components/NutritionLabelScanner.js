@@ -117,14 +117,12 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
     );
   }
 
-  const { width: screenW, height: screenH } = Dimensions.get('window');
-
   return (
     <View
       style={styles.container}
       onLayout={(e) => console.log('[LAYOUT] labelScannerContainer', JSON.stringify(e.nativeEvent.layout))}
     >
-      {/* 1. Live Native Camera Feed — flex:1 so it drives layout */}
+      {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
           key={cameraKey}
@@ -138,13 +136,13 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
         />
       )}
 
-      {/* 2. Full-screen overlay pinned to window dimensions */}
-      <View style={[styles.fullScreenOverlay, { width: screenW, height: screenH }]} pointerEvents="box-none">
+      {/* 2. Full-Screen HUD Overlay */}
+      <View style={styles.overlayContainer} pointerEvents="box-none">
         {/* Top Control Bar: positioned below the status bar & top tab pills */}
         <View
           style={[
             styles.topControlsRow,
-            { top: insets.top + 54 },
+            { top: insets.top + 60 },
           ]}
         >
           <TouchableOpacity
@@ -189,7 +187,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
         </View>
 
         {/* Bottom Controls Row */}
-        <View style={[styles.bottomControlsRow, { bottom: 20 }]}>
+        <View style={[styles.bottomControlsRow, { bottom: Math.max(insets.bottom, 24) + 12 }]}>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={handlePickFromGallery}
@@ -234,12 +232,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   cameraView: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
-  fullScreenOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
   },
   centerContainer: {
     flex: 1,

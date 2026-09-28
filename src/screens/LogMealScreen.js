@@ -234,6 +234,13 @@ export default function LogMealScreen({ navigation }) {
 
         {/* 2. Floating Top Header & Tab Pills (respects insets.top) */}
         <View style={[styles.floatingHeaderWrapper, { top: insets.top + 8 }]}>
+          <TouchableOpacity
+            style={styles.closeCameraBtn}
+            onPress={() => navigation.navigate('Dashboard')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -547,6 +554,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  closeCameraBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
   },
   header: {
     marginBottom: 12,

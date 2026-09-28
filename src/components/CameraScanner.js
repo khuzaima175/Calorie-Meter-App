@@ -33,7 +33,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
   const handleTakePhoto = async () => {
     if (!cameraRef.current || isProcessing) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -54,7 +54,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   };
 
   const handlePickFromGallery = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -78,7 +78,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   };
 
   const toggleCameraFacing = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
@@ -120,16 +120,12 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     );
   }
 
-  // Use window dimensions to guarantee full-screen coverage
-  // This bypasses any flex chain collapse issues on Android
-  const { width: screenW, height: screenH } = Dimensions.get('window');
-
   return (
     <View
       style={styles.container}
       onLayout={(e) => console.log('[LAYOUT] scannerContainer', JSON.stringify(e.nativeEvent.layout))}
     >
-      {/* 1. Live Native Camera View — uses flex:1 so it's a REAL layout child */}
+      {/* 1. Live Native Camera View */}
       {permission.granted && (
         <CameraView
           key={cameraKey}
@@ -143,13 +139,13 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         />
       )}
 
-      {/* 2. Full-screen overlay — pinned to window dimensions so it never collapses */}
-      <View style={[styles.fullScreenOverlay, { width: screenW, height: screenH }]} pointerEvents="box-none">
+      {/* 2. Full-Screen HUD Overlay */}
+      <View style={styles.overlayContainer} pointerEvents="box-none">
         {/* Top Control Bar: positioned below the status bar & top tab pills */}
         <View
           style={[
             styles.topControlsRow,
-            { top: insets.top + 54 },
+            { top: insets.top + 60 },
           ]}
         >
           <TouchableOpacity
@@ -178,7 +174,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
           </TouchableOpacity>
         </View>
 
-        {/* Center Viewfinder Reticle: self-centering on every screen size */}
+        {/* Center Viewfinder Reticle: centered vertically and horizontally across the screen */}
         <View style={styles.centerReticleLayer} pointerEvents="none">
           <View style={styles.scanTargetFrame}>
             <View style={[styles.corner, styles.topLeft]} />
@@ -190,7 +186,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         </View>
 
         {/* Bottom Shutter Row */}
-        <View style={[styles.bottomControlsRow, { bottom: 20 }]}>
+        <View style={[styles.bottomControlsRow, { bottom: Math.max(insets.bottom, 24) + 12 }]}>
           {/* Gallery Picker */}
           <TouchableOpacity
             style={styles.actionBtn}
@@ -237,12 +233,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   cameraView: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
-  fullScreenOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
   },
   centerContainer: {
     flex: 1,
