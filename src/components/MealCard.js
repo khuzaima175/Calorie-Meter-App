@@ -1,7 +1,7 @@
 // src/components/MealCard.js
 // Clean meal entry card with calories, macro tags, time, and delete action
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,26 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, typography } from '../theme/colors';
 import { formatTimeString } from '../services/databaseService';
+import { resolveImageUriAsync } from '../services/imageService';
 
 export default function MealCard({ meal, onDelete, onPress }) {
+  const [displayImageUri, setDisplayImageUri] = useState(meal?.image_uri || null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (meal?.image_uri && meal.image_uri.startsWith('indexeddb://')) {
+      resolveImageUriAsync(meal.image_uri).then((resolved) => {
+        if (isMounted && resolved) {
+          setDisplayImageUri(resolved);
+        }
+      });
+    } else {
+      setDisplayImageUri(meal?.image_uri || null);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [meal?.image_uri]);
   const handleDelete = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     Alert.alert(
@@ -45,8 +63,8 @@ export default function MealCard({ meal, onDelete, onPress }) {
       accessibilityHint="Tap to edit meal details"
     >
       <View style={styles.topRow}>
-        {meal.image_uri ? (
-          <Image source={{ uri: meal.image_uri }} style={styles.thumbnail} accessibilityLabel={`${meal.name} photo`} />
+        {displayImageUri ? (
+          <Image source={{ uri: displayImageUri }} style={styles.thumbnail} accessibilityLabel={`${meal.name} photo`} />
         ) : null}
 
         <View style={styles.infoContainer}>

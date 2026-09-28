@@ -630,6 +630,12 @@ export const FOOD_ANALYSIS_SCHEMA = {
     sugar: { type: 'NUMBER' },
     sodium: { type: 'NUMBER' },
     confidence: { type: 'NUMBER' },
+    health_score: { type: 'NUMBER' },
+    dietary_tags: { type: 'ARRAY', items: { type: 'STRING' } },
+    health_tips: { type: 'STRING' },
+    is_no_food: { type: 'BOOLEAN' },
+    is_water: { type: 'BOOLEAN' },
+    water_ml: { type: 'NUMBER' },
   },
   required: ['name', 'meal_type', 'portion', 'calories', 'protein', 'carbs', 'fat'],
 };
@@ -647,6 +653,8 @@ export const NUTRITION_LABEL_SCHEMA = {
     sugar: { type: 'NUMBER' },
     sodium: { type: 'NUMBER' },
     confidence: { type: 'NUMBER' },
+    health_score: { type: 'NUMBER' },
+    health_tips: { type: 'STRING' },
   },
   required: ['name', 'portion', 'calories', 'protein', 'carbs', 'fat'],
 };

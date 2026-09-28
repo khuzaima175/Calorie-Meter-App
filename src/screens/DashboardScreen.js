@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 130,
+    paddingBottom: 28,
   },
   headerRow: {
     flexDirection: 'row',

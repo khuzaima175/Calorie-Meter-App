@@ -97,7 +97,7 @@ export default function CalorieRing({
         </Text>
         {burned > 0 && (
           <Text style={styles.netLabel}>
-            Net: {Math.round(goal - netConsumed + burned)} kcal
+            +{Math.round(burned)} kcal exercise credit
           </Text>
         )}
       </View>

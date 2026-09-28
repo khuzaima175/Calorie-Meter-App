@@ -220,6 +220,51 @@ A comprehensive, historical engineering log of all bugs encountered during devel
 
 ---
 
+### 19. Missing `useRef` Import in LogMealScreen Crash
+- **Severity**: 🔴 Critical
+- **Symptoms**: Tapping the center camera button or navigating to the Log tab caused an immediate full-app crash.
+- **Root Cause**: `barcodeReqIdRef = useRef(0)` was invoked on line 60, but `useRef` was omitted from the `react` import statement.
+- **Exact Code Solution**: Added `useRef` to `import React, { useState, useRef } from 'react';` in [`src/screens/LogMealScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/LogMealScreen.js).
+- **Verification**: Verified AST import bindings; screen mounts smoothly without runtime errors.
+
+---
+
+### 20. Missing `Alert` Import in AssistantScreen Meal Plan Logger
+- **Severity**: 🔴 Critical
+- **Symptoms**: Tapping "Log This Meal" on an AI-generated meal plan caused a runtime exception and crashed the screen.
+- **Root Cause**: `Alert.alert('Meal Logged ✓', ...)` was called on line 106, but `Alert` was missing from `react-native` imports.
+- **Exact Code Solution**: Added `Alert` to `import { ... Alert } from 'react-native'` in [`src/screens/AssistantScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/AssistantScreen.js).
+- **Verification**: Verified AST analysis; logging meal plans displays native confirmation alerts cleanly.
+
+---
+
+### 21. Undefined `DEFAULT_GOALS` & `DEFAULT_PROFILE` in Database Service
+- **Severity**: 🔴 Critical
+- **Symptoms**: Factory reset on web browser or importing a backup JSON threw `ReferenceError: DEFAULT_GOALS is not defined`.
+- **Root Cause**: Variables were referenced in migration and reset fallbacks but never declared.
+- **Exact Code Solution**: Declared and exported `DEFAULT_GOALS` and `DEFAULT_PROFILE` constants in [`src/services/databaseService.js`](file:///g:/Important%20Projects/calorie%20meter/src/services/databaseService.js). Also corrected `saveProfile` -> `updateProfile` and `saveGoals` -> `updateGoals` in `importAllDataJSON`.
+- **Verification**: Verified with Babel AST traversal; factory reset and import execute safely.
+
+---
+
+### 22. Missing `getDailySummary` in Database Service (Weekly Trends Chart Invisibility)
+- **Severity**: 🔴 Critical
+- **Symptoms**: The 7-Day Nutrition Trends chart on the Dashboard was completely invisible and returned `null`.
+- **Root Cause**: `get7DaySummary()` invoked `getDailySummary()`, which was never declared, triggering an unhandled exception caught silently in `WeeklyTrendsCard.js`.
+- **Exact Code Solution**: Implemented and exported `getDailySummary(date)` aggregating daily meals, exercises, and water into structured totals.
+- **Verification**: WeeklyTrendsCard receives daily summary data and renders the interactive 7-day intake chart.
+
+---
+
+### 23. Gemini Schema Stripping Health Scores & Tags
+- **Severity**: 🟠 High
+- **Symptoms**: Health score pills, dietary tags, and health insight tips never appeared in food analysis result cards.
+- **Root Cause**: Gemini strict JSON mode enforces `responseSchema`. Undeclared properties were stripped from API payloads.
+- **Exact Code Solution**: Added `health_score`, `dietary_tags`, `health_tips`, `is_no_food`, `is_water`, `water_ml` to `FOOD_ANALYSIS_SCHEMA` and `NUTRITION_LABEL_SCHEMA` in [`src/services/geminiService.js`](file:///g:/Important%20Projects/calorie%20meter/src/services/geminiService.js).
+- **Verification**: Unit tests and API mock outputs retain tags, health tips, and scores.
+
+---
+
 ## 🚀 Feature Status & Production Matrix
 
 | Feature Module | Capabilities | Status | Test Coverage |
@@ -241,7 +286,7 @@ A comprehensive, historical engineering log of all bugs encountered during devel
 | **Local Notifications** | 4 daily meal and hydration reminders via `expo-notifications` | ✅ Active | Verified |
 | **Accessibility (A11y)** | WCAG AA labels, roles, hints, and states on all interactive elements | ✅ Active | Verified |
 | **Offline Persistence** | SQLite WAL local storage with network status banner | ✅ Active | Verified |
-| **Unit Test Suite** | 10 automated unit tests (`npm test`) | ✅ Active | 10/10 Passing |
+| **Unit Test Suite** | 11 automated unit tests (`npm test`) | ✅ Active | 11/11 Passing |
 
 ---
 

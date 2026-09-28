@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -84,7 +85,8 @@ export default function AssistantScreen() {
   const handleGenerateReview = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     scrollToBottom(true);
-    await sendUserMessage('Please review my logged nutrition for today and give me feedback.', userContext, () => scrollToBottom(false));
+    const reviewPrompt = `Please give me a structured 3-point daily review of my nutrition today:\n- Consumed: ${userContext.totals.calories} kcal (Target: ${userContext.goals.calories} kcal)\n- Protein: ${userContext.totals.protein}g / ${userContext.goals.protein}g\n- Carbs: ${userContext.totals.carbs}g / ${userContext.goals.carbs}g\n- Fat: ${userContext.totals.fat}g / ${userContext.goals.fat}g\n- Active Burn: ${userContext.totals.caloriesBurned} kcal\n\nProvide:\n1. 🌟 Achievements & Wins\n2. 🔍 Areas for Improvement\n3. 🎯 Focus Target for Tomorrow`;
+    await sendUserMessage(reviewPrompt, userContext, () => scrollToBottom(false));
   };
 
   const handleGenerateMealPlan = async () => {
@@ -105,13 +107,6 @@ export default function AssistantScreen() {
     });
     Alert.alert('Meal Logged ✓', `"${mealItem.title}" (${mealItem.calories} kcal) has been added to your daily diary.`);
   };
-
-  const insets = useSafeAreaInsets();
-  const bottomBarOffset = Math.max(
-    (insets.bottom || 0) + (Platform.OS === 'ios' ? 12 : 20),
-    Platform.OS === 'ios' ? 24 : 22
-  );
-  const bottomChatMargin = bottomBarOffset + 64 + 6;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -239,7 +234,7 @@ export default function AssistantScreen() {
         </ScrollView>
 
         {/* Bottom Chat Input Bar */}
-        <View style={[styles.inputContainer, { marginBottom: bottomChatMargin }]}>
+        <View style={styles.inputContainer}>
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}

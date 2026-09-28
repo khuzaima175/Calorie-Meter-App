@@ -12,7 +12,7 @@
 [![SQLite](https://img.shields.io/badge/SQLite-Local%20First-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Google Gemini](https://img.shields.io/badge/Gemini-3.5%20Flash--Lite-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests: Passing](https://img.shields.io/badge/Tests-10%2F10%20Passing-brightgreen.svg)](tests/core-calculations.test.js)
+[![Tests: Passing](https://img.shields.io/badge/Tests-11%2F11%20Passing-brightgreen.svg)](tests/core-calculations.test.js)
 
 </div>
 

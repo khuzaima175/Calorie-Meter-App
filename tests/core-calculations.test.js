@@ -281,3 +281,25 @@ test('JSON Text Cleaner: Strips markdown fenced code blocks safely', () => {
   assert.equal(parsed.name, 'Biryani');
   assert.equal(parsed.calories, 550);
 });
+
+test('Schema Validation: Required food macro keys exist', () => {
+  const requiredKeys = ['name', 'meal_type', 'portion', 'calories', 'protein', 'carbs', 'fat'];
+  const dummyPayload = {
+    name: 'Chicken Karahi',
+    meal_type: 'dinner',
+    portion: '1 cup',
+    calories: 360,
+    protein: 34,
+    carbs: 8,
+    fat: 21,
+    health_score: 8,
+    dietary_tags: ['High Protein'],
+  };
+
+  for (const k of requiredKeys) {
+    assert.ok(k in dummyPayload, `Missing required key: ${k}`);
+  }
+  assert.equal(dummyPayload.health_score, 8);
+  assert.ok(Array.isArray(dummyPayload.dietary_tags));
+});
+

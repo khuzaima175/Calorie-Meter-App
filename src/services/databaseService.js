@@ -16,29 +16,35 @@ let dbInstance = null;
 
 // Web In-Memory / LocalStorage State
 const WEB_STORAGE_KEY = 'caloriesnap_web_data_v1';
+
+export const DEFAULT_GOALS = {
+  id: 1,
+  calories: 2100,
+  protein: 140,
+  carbs: 220,
+  fat: 65,
+  water_ml: 2500,
+  exercise_minutes: 30,
+};
+
+export const DEFAULT_PROFILE = {
+  id: 1,
+  name: 'Khzuaima',
+  gender: 'male',
+  age: 26,
+  weight_kg: 75,
+  height_cm: 178,
+  activity_level: 'moderate',
+  goal_type: 'lose_weight',
+  custom_api_key: '',
+};
+
 let webStore = {
   meals: [],
   exercises: [],
   water_intake: [],
-  goals: {
-    id: 1,
-    calories: 2100,
-    protein: 140,
-    carbs: 220,
-    fat: 65,
-    water_ml: 2500,
-    exercise_minutes: 30,
-  },
-  profile: {
-    id: 1,
-    name: 'Khzuaima',
-    gender: 'male',
-    age: 26,
-    weight_kg: 75,
-    height_cm: 178,
-    activity_level: 'moderate',
-    goal_type: 'lose_weight',
-  },
+  goals: { ...DEFAULT_GOALS },
+  profile: { ...DEFAULT_PROFILE },
 };
 
 function saveWebStore() {
@@ -832,14 +838,14 @@ export async function importAllDataJSON(jsonString) {
   `);
 
   if (parsed.profile) {
-    await saveProfile({
+    await updateProfile({
       ...DEFAULT_PROFILE,
       ...parsed.profile,
       custom_api_key: parsed.profile.custom_api_key || '',
     });
   }
   if (parsed.goals) {
-    await saveGoals({
+    await updateGoals({
       ...DEFAULT_GOALS,
       ...parsed.goals,
     });
@@ -892,6 +898,39 @@ export async function importAllDataJSON(jsonString) {
   }
 
   return { schemaVersion, mealCount, exerciseCount, waterCount };
+}
+
+/**
+ * Computes daily nutritional summary for a specific date
+ */
+export async function getDailySummary(date) {
+  const [meals, exercises, water] = await Promise.all([
+    getMealsByDate(date),
+    getExercisesByDate(date),
+    getWaterIntakeByDate(date),
+  ]);
+
+  const calories = meals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
+  const protein = meals.reduce((sum, m) => sum + (Number(m.protein) || 0), 0);
+  const carbs = meals.reduce((sum, m) => sum + (Number(m.carbs) || 0), 0);
+  const fat = meals.reduce((sum, m) => sum + (Number(m.fat) || 0), 0);
+  const fiber = meals.reduce((sum, m) => sum + (Number(m.fiber) || 0), 0);
+  const caloriesBurned = exercises.reduce((sum, e) => sum + (Number(e.calories_burned) || 0), 0);
+  const waterMl = water.reduce((sum, w) => sum + (Number(w.amount_ml) || 0), 0);
+
+  return {
+    date,
+    totals: {
+      calories: Math.round(calories),
+      protein: Math.round(protein),
+      carbs: Math.round(carbs),
+      fat: Math.round(fat),
+      fiber: Math.round(fiber),
+      waterMl: Math.round(waterMl),
+      caloriesBurned: Math.round(caloriesBurned),
+      netCalories: Math.round(calories - caloriesBurned),
+    },
+  };
 }
 
 /**

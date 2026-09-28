@@ -1,7 +1,7 @@
 // src/screens/LogMealScreen.js
 // 5-Tab Smart Meal Logger: AI Photo, Text NLP, Nutrition Label OCR, Barcode Scanner, & Manual Entry
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,

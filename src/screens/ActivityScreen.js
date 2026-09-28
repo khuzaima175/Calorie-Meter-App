@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNutritionStore } from '../stores/useNutritionStore';
 import { useProfileStore } from '../stores/useProfileStore';
+import DaySelector from '../components/DaySelector';
 import ExerciseCard from '../components/ExerciseCard';
 import AddExerciseModal from '../components/AddExerciseModal';
 import Card from '../components/Card';
@@ -23,6 +24,7 @@ import { colors, radius, typography } from '../theme/colors';
 
 export default function ActivityScreen() {
   const selectedDate = useNutritionStore((s) => s.selectedDate);
+  const setSelectedDate = useNutritionStore((s) => s.setSelectedDate);
   const refreshData = useNutritionStore((s) => s.refreshData);
   const exercises = useNutritionStore((s) => s.exercises);
   const dailyTotals = useNutritionStore((s) => s.dailyTotals);
@@ -75,6 +77,9 @@ export default function ActivityScreen() {
             style={styles.addWorkoutBtn}
           />
         </View>
+
+        {/* Date Selector Navigation */}
+        <DaySelector selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
         {/* Hero Active Minutes Metric Card */}
         <Card style={styles.heroCard}>
@@ -166,7 +171,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 130,
+    paddingBottom: 28,
   },
   headerRow: {
     flexDirection: 'row',
