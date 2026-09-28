@@ -9,6 +9,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { useProfileStore, calculateMetabolism } from '../stores/useProfileStore';
 import { useNutritionStore } from '../stores/useNutritionStore';
 import { resetDatabaseToDemo, clearAllLogs } from '../services/databaseService';
+import { testGeminiApiKey } from '../services/geminiService';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import Card from '../components/Card';
@@ -63,6 +65,7 @@ export default function SettingsScreen() {
   // Gemini API Key State
   const [apiKey, setApiKey] = useState(profile?.custom_api_key || '');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [isTestingKey, setIsTestingKey] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -112,8 +115,31 @@ export default function SettingsScreen() {
     Alert.alert('Goals Updated', 'Your nutrition and fitness targets have been saved.');
   };
 
+  const handleTestApiKey = async () => {
+    const keyToTest = apiKey.trim();
+    setIsTestingKey(true);
+    try {
+      const res = await testGeminiApiKey(keyToTest);
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert(
+          'API Key Valid! ✓',
+          `Successfully connected to Google Gemini (${res.model}) in ${res.latencyMs}ms.\n\nYour AI food scanner, text parser, and nutrition coach are ready to go!`
+        );
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        Alert.alert('Connection Test Failed', res.error);
+      }
+    } catch (err) {
+      Alert.alert('Test Error', err.message || 'Could not reach Gemini API.');
+    } finally {
+      setIsTestingKey(false);
+    }
+  };
+
   const handleSaveApiKey = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    const cleanKey = apiKey.trim().replace(/\s+/g, '');
     const updatedProfile = {
       ...(profile || {}),
       name: name.trim() || 'Explorer',
@@ -123,10 +149,48 @@ export default function SettingsScreen() {
       height_cm: Number(heightCm) || 175,
       activity_level: activityLevel,
       goal_type: goalType,
-      custom_api_key: apiKey.trim(),
+      custom_api_key: cleanKey,
     };
     await saveProfile(updatedProfile, false);
-    Alert.alert('API Key Saved', 'Your Gemini API key has been saved and is now active for all AI features.');
+    if (cleanKey) {
+      Alert.alert(
+        'Gemini API Key Saved',
+        `Your personal Gemini API key (${cleanKey.length} characters) is active for AI meal scanning, text parsing, and coaching.`
+      );
+    } else {
+      Alert.alert('API Key Cleared', 'The app will now use the default shared Gemini API key.');
+    }
+  };
+
+  const handleClearCustomApiKey = () => {
+    Alert.alert(
+      'Revert to Default Key',
+      'Remove your personal Gemini API key and switch back to the built-in default key?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setApiKey('');
+            const updatedProfile = {
+              ...(profile || {}),
+              name: name.trim() || 'Explorer',
+              gender,
+              age: Number(age) || 25,
+              weight_kg: Number(weightKg) || 70,
+              height_cm: Number(heightCm) || 175,
+              activity_level: activityLevel,
+              goal_type: goalType,
+              custom_api_key: '',
+            };
+            await saveProfile(updatedProfile, false);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            Alert.alert('Default Key Restored', 'The app is now using the default shared Gemini key.');
+          },
+        },
+      ]
+    );
   };
 
   const handleResetDemoData = () => {
@@ -406,41 +470,100 @@ export default function SettingsScreen() {
         <Text style={styles.sectionHeading}>Gemini AI Configuration</Text>
         <Card style={styles.card}>
           <Text style={styles.cardDesc}>
-            Sage AI, Food Photo Vision, and Label OCR are powered by Google Gemini. You can paste your own Gemini API key below to override the default key.
+            Sage AI Coach, Food Vision, and Label OCR are powered by Google Gemini. Enter your own free Gemini API key below to override default shared quotas.
           </Text>
 
-          <View style={styles.apiKeyInputContainer}>
-            <View style={{ flex: 1 }}>
-              <Input
-                label="Gemini API Key"
-                value={apiKey}
-                onChangeText={setApiKey}
-                placeholder="AIzaSy..."
-                secureTextEntry={!showApiKey}
-                autoCapitalize="none"
-                autoCorrect={false}
+          {/* Status Badge */}
+          {apiKey?.trim() ? (
+            <View style={styles.keyStatusBadge}>
+              <Ionicons name="checkmark-circle" size={15} color={colors.sageBright} />
+              <Text style={styles.keyStatusText}>
+                Custom Key Configured ({apiKey.trim().length} characters)
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.keyStatusBadgeMuted}>
+              <Ionicons name="information-circle-outline" size={15} color={colors.textTertiary} />
+              <Text style={styles.keyStatusTextMuted}>
+                Using Shared App Key (subject to shared daily quotas)
+              </Text>
+            </View>
+          )}
+
+          <Input
+            label="Gemini API Key"
+            value={apiKey}
+            onChangeText={(text) => setApiKey(text.trim().replace(/\s+/g, ''))}
+            placeholder="AIzaSy..."
+            secureTextEntry={!showApiKey}
+            autoCapitalize="none"
+            autoCorrect={false}
+            selectTextOnFocus
+            rightAccessory={
+              <View style={styles.inputAccessoryRow}>
+                {apiKey ? (
+                  <TouchableOpacity
+                    onPress={() => setApiKey('')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.keyActionIconBtn}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  onPress={() => setShowApiKey(!showApiKey)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.keyActionIconBtn}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={showApiKey ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+            }
+          />
+
+          <View style={styles.apiButtonRow}>
+            <View style={{ flex: 1, marginRight: 6 }}>
+              <Button
+                title={isTestingKey ? 'Testing...' : 'Test Key'}
+                onPress={handleTestApiKey}
+                variant="secondary"
+                size="md"
+                loading={isTestingKey}
               />
             </View>
-            <TouchableOpacity
-              style={styles.keyEyeBtn}
-              onPress={() => setShowApiKey(!showApiKey)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={showApiKey ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={colors.textSecondary}
+            <View style={{ flex: 1, marginLeft: 6 }}>
+              <Button
+                title="Save Key"
+                onPress={handleSaveApiKey}
+                variant="primary"
+                size="md"
               />
-            </TouchableOpacity>
+            </View>
           </View>
 
-          <Button
-            title="Save Gemini API Key"
-            onPress={handleSaveApiKey}
-            variant="primary"
-            size="md"
-            style={{ marginTop: 8 }}
-          />
+          {profile?.custom_api_key ? (
+            <TouchableOpacity
+              style={styles.clearKeyLink}
+              onPress={handleClearCustomApiKey}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.clearKeyLinkText}>Remove custom key & use default</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity
+            style={styles.aiStudioLink}
+            onPress={() => Linking.openURL('https://aistudio.google.com/app/apikey')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="open-outline" size={14} color={colors.sageBright} />
+            <Text style={styles.aiStudioLinkText}>Get a free API key at Google AI Studio</Text>
+          </TouchableOpacity>
         </Card>
 
         {/* Section 3: App & Data Tools */}
@@ -611,15 +734,79 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
-  apiKeyInputContainer: {
-    position: 'relative',
-    justifyContent: 'center',
+  keyStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(107, 155, 125, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(107, 155, 125, 0.3)',
+    borderRadius: radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
   },
-  keyEyeBtn: {
-    position: 'absolute',
-    right: 12,
-    top: 36,
+  keyStatusText: {
+    ...typography.caption,
+    color: colors.sageBright,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  keyStatusBadgeMuted: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  keyStatusTextMuted: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    marginLeft: 6,
+  },
+  inputAccessoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  keyActionIconBtn: {
     padding: 6,
+    marginLeft: 2,
+  },
+  apiButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  clearKeyLink: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  clearKeyLinkText: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textDecorationLine: 'underline',
+  },
+  aiStudioLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(107, 155, 125, 0.08)',
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(107, 155, 125, 0.2)',
+  },
+  aiStudioLinkText: {
+    ...typography.callout,
+    color: colors.sageBright,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   optionList: {
     marginBottom: 12,

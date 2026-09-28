@@ -48,12 +48,149 @@ class RateLimiter {
 const rateLimiter = new RateLimiter(15, 60000);
 
 /**
- * Core caller for Gemini REST API with fallback and JSON parsing
+ * Parses raw Gemini API error responses into user-friendly, actionable messages
+ */
+export function parseAndFormatGeminiError(errorInput, status = 0) {
+  let message = '';
+  let statusStr = '';
+
+  try {
+    const parsed = typeof errorInput === 'string' ? JSON.parse(errorInput) : errorInput;
+    message = parsed?.error?.message || '';
+    statusStr = parsed?.error?.status || '';
+  } catch {
+    message = typeof errorInput === 'string' ? errorInput : errorInput?.message || '';
+  }
+
+  const combined = `${message} ${statusStr}`.toLowerCase();
+  const hasCustomKey = Boolean(useProfileStore?.getState()?.profile?.custom_api_key?.trim());
+
+  // 1. Quota / Rate limit exceeded (429 / RESOURCE_EXHAUSTED / Quota exceeded)
+  if (
+    status === 429 ||
+    combined.includes('429') ||
+    combined.includes('resource_exhausted') ||
+    combined.includes('quota') ||
+    combined.includes('rate_limit_exceeded') ||
+    combined.includes('too many requests')
+  ) {
+    if (hasCustomKey) {
+      return (
+        '⚠️ Gemini Quota Limit Reached\n\n' +
+        'Your personal Gemini API key has temporarily exceeded its requests-per-minute quota. ' +
+        'Please wait 30–60 seconds before trying again, or check your quota in Google AI Studio.'
+      );
+    }
+    return (
+      '⚠️ Gemini AI Quota Reached\n\n' +
+      'The default shared API key has temporarily reached its Google request quota limit. ' +
+      'You can paste your own free Gemini API key in Profile > Settings to get instant, unlimited access, or please try again in a few minutes.'
+    );
+  }
+
+  // 2. Invalid API Key
+  if (
+    status === 400 &&
+    (combined.includes('api_key_invalid') ||
+      combined.includes('api key not valid') ||
+      combined.includes('invalid api key') ||
+      combined.includes('key not found'))
+  ) {
+    return (
+      '⚠️ Invalid Gemini API Key\n\n' +
+      'Google rejected the configured API key. Please check or re-enter your API key in Profile > Settings.'
+    );
+  }
+
+  // 3. Model overload / 503
+  if (status === 503 || combined.includes('overloaded') || combined.includes('unavailable')) {
+    return (
+      '⚠️ Gemini Service Busy\n\n' +
+      'Google AI servers are momentarily busy. Please try again in a few seconds.'
+    );
+  }
+
+  // 4. Return parsed message if available, else standard message
+  return message || `Gemini AI service unavailable (Status ${status || 'unknown'}). Please try again.`;
+}
+
+/**
+ * Quick validation helper to test an API key directly from Settings
+ */
+export async function testGeminiApiKey(candidateKey) {
+  const keyToTest = candidateKey ? candidateKey.trim() : getApiKey();
+  if (!keyToTest || keyToTest.startsWith('AIzaSy_REPLACE')) {
+    return {
+      success: false,
+      error: 'No API key provided. Please enter a valid Gemini API key.',
+    };
+  }
+
+  const startTime = Date.now();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${PRIMARY_MODEL}:generateContent?key=${keyToTest}`;
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: 'Reply with only the word: OK' }] }],
+    generationConfig: { maxOutputTokens: 5, temperature: 0.1 },
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const elapsedMs = Date.now() - startTime;
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      // If 404 on PRIMARY, check FALLBACK
+      if (response.status === 404) {
+        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_MODEL}:generateContent?key=${keyToTest}`;
+        const fallbackRes = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (fallbackRes.ok) {
+          return {
+            success: true,
+            latencyMs: Date.now() - startTime,
+            model: FALLBACK_MODEL,
+          };
+        }
+        const fallbackErr = await fallbackRes.text();
+        return {
+          success: false,
+          error: parseAndFormatGeminiError(fallbackErr, fallbackRes.status),
+        };
+      }
+      return {
+        success: false,
+        error: parseAndFormatGeminiError(errorText, response.status),
+      };
+    }
+
+    return {
+      success: true,
+      latencyMs: elapsedMs,
+      model: PRIMARY_MODEL,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err?.message || 'Network error connecting to Gemini API.',
+    };
+  }
+}
+
+/**
+ * Core caller for Gemini REST API with fallback, rate limiting, and friendly error formatting
  */
 async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODEL) {
   const apiKey = getApiKey();
   if (!apiKey || apiKey.startsWith('AIzaSy_REPLACE')) {
-    throw new Error('Please set your Gemini API key in the .env file (EXPO_PUBLIC_GEMINI_KEY).');
+    throw new Error('Please set your Gemini API key in Profile > Settings or in your .env file.');
   }
 
   if (!rateLimiter.canRequest()) {
@@ -89,19 +226,43 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
 
     if (!response.ok) {
       const errorText = await response.text();
-      // If 2.5-flash fails with 404 or unsupported, retry with 1.5-flash
+
+      // If 429 Quota Exceeded or Rate Limit, do NOT retry (same project/key limit)
+      if (response.status === 429 || errorText.includes('RESOURCE_EXHAUSTED') || errorText.includes('quota')) {
+        const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
+        throw new Error(friendlyMsg);
+      }
+
+      // If model 404 or bad model request on PRIMARY, retry with FALLBACK
       if (model === PRIMARY_MODEL && (response.status === 404 || response.status === 400)) {
+        // But if it's invalid key, fail fast
+        if (errorText.includes('API_KEY_INVALID') || errorText.includes('API key not valid')) {
+          const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
+          throw new Error(friendlyMsg);
+        }
         console.warn(`Model ${PRIMARY_MODEL} returned ${response.status}, retrying with ${FALLBACK_MODEL}...`);
         return await callGemini(contents, systemInstruction, FALLBACK_MODEL);
       }
-      throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+
+      const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
+      throw new Error(friendlyMsg);
     }
 
     const data = await response.json();
     const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     return candidateText;
   } catch (error) {
-    if (model === PRIMARY_MODEL && !error.message.includes('rate limit')) {
+    // If it's already a quota, rate limit, or invalid key message, do not retry fallback
+    if (
+      error.message.includes('Quota') ||
+      error.message.includes('quota') ||
+      error.message.includes('rate limit') ||
+      error.message.includes('Invalid Gemini API Key')
+    ) {
+      throw error;
+    }
+
+    if (model === PRIMARY_MODEL) {
       return await callGemini(contents, systemInstruction, FALLBACK_MODEL);
     }
     throw error;

@@ -24,11 +24,21 @@ export default function Input({
   multiline = false,
   numberOfLines = 1,
   iconLeft,
+  iconRight,
+  rightAccessory,
   clearable = false,
   editable = true,
+  autoCapitalize = 'sentences',
+  autoCorrect = true,
+  autoComplete,
+  textContentType,
+  selectTextOnFocus = false,
   style,
   inputStyle,
   containerStyle,
+  onFocus,
+  onBlur,
+  ...rest
 }) {
   const [isFocused, setIsFocused] = useState(false);
 
@@ -63,8 +73,20 @@ export default function Input({
           numberOfLines={numberOfLines}
           secureTextEntry={secureTextEntry}
           editable={editable}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
+          autoComplete={autoComplete}
+          textContentType={textContentType}
+          selectTextOnFocus={selectTextOnFocus}
+          onFocus={(e) => {
+            setIsFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlur?.(e);
+          }}
+          {...rest}
         />
 
         {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
@@ -78,6 +100,9 @@ export default function Input({
             <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
           </TouchableOpacity>
         ) : null}
+
+        {iconRight ? <View style={styles.iconRight}>{iconRight}</View> : null}
+        {rightAccessory ? <View style={styles.rightAccessory}>{rightAccessory}</View> : null}
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -136,6 +161,14 @@ const styles = StyleSheet.create({
   },
   iconLeft: {
     marginRight: 10,
+  },
+  iconRight: {
+    marginLeft: 8,
+  },
+  rightAccessory: {
+    marginLeft: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   clearBtn: {
     marginLeft: 8,
