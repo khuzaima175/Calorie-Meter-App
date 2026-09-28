@@ -174,10 +174,10 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
   return (
     <View style={styles.container}>
-      {/* 1. Camera Viewport */}
+      {/* 1. Camera Viewport Full-Bleed */}
       <CameraView
         ref={cameraRef}
-        style={StyleSheet.absoluteFillObject}
+        style={styles.cameraView}
         facing={facing}
       />
 
@@ -363,7 +363,12 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: 'transparent',
+  },
+  cameraView: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   center: {
     flex: 1,

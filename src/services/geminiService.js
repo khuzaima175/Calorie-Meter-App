@@ -1,8 +1,9 @@
 import { useProfileStore } from '../stores/useProfileStore';
 
-// Models: 3.7 Flash as Primary, 3.5 Flash-Lite as Secondary & Chat
-const PRIMARY_MODEL = 'gemini-3.7-flash';
-const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+// Models: 3.5 Flash-Lite as Primary (ultra-fast sub-second inference), 3.7 Flash as Secondary
+const PRIMARY_MODEL = 'gemini-3.5-flash-lite';
+const FALLBACK_MODEL = 'gemini-3.7-flash';
+const CHAT_MODEL = 'gemini-3.5-flash-lite';
 
 /**
  * Returns current real-time meal period for Pakistani / local daily routine
