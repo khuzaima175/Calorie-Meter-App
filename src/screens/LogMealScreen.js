@@ -206,7 +206,7 @@ export default function LogMealScreen({ navigation }) {
   return (
     <SafeAreaView
       style={[styles.safeArea, isCameraMode && styles.cameraSafeArea]}
-      edges={['top', 'left', 'right']}
+      edges={isCameraMode ? [] : ['top', 'left', 'right']}
     >
       <View style={[styles.container, isCameraMode && styles.cameraContainer]}>
         {/* Top Header & Tab Pills Navigation */}
@@ -580,6 +580,9 @@ const styles = StyleSheet.create({
   },
   cameraTabContent: {
     paddingHorizontal: 0,
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   resultContainer: {
     flex: 1,

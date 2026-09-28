@@ -31,7 +31,7 @@ export default function TabNavigator() {
       routeKey === 'LogMeal'
         ? Haptics.ImpactFeedbackStyle.Medium
         : Haptics.ImpactFeedbackStyle.Light
-    ).catch(() => {});
+    ).catch(() => { });
 
     // Bounce the center button when pressed
     if (routeKey === 'LogMeal') {
@@ -75,7 +75,11 @@ export default function TabNavigator() {
   };
 
   // Ensure floating tab bar sits cleanly above Android system nav bar or iOS Home indicator
-  const bottomBarOffset = (insets.bottom || 0) + (Platform.OS === 'ios' ? 8 : 6);
+  const bottomBarOffset = Platform.select({
+    ios: (insets.bottom || 0) + 8,
+    android: insets.bottom > 0 ? insets.bottom + 6 : 18,
+    default: 16,
+  });
 
   return (
     <View style={styles.container}>

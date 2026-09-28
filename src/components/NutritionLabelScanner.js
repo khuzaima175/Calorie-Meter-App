@@ -224,6 +224,8 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#000000',
     position: 'relative',
     overflow: 'hidden',
