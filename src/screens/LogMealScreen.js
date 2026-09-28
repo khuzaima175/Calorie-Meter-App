@@ -203,77 +203,135 @@ export default function LogMealScreen({ navigation }) {
     navigation.navigate('Dashboard');
   };
 
-  return (
-    <SafeAreaView
-      style={[styles.safeArea, isCameraMode && styles.cameraSafeArea]}
-      edges={isCameraMode ? [] : ['top', 'left', 'right']}
-    >
-      <View style={[styles.container, isCameraMode && styles.cameraContainer]}>
-        {/* Top Header & Tab Pills Navigation */}
-        <View style={isCameraMode ? [styles.floatingHeaderWrapper, { top: insets.top + 8 }] : styles.headerWrapper}>
-          {!isCameraMode && (
-            <View style={styles.header}>
-              <Text style={styles.titleText}>
-                {analysisResult ? 'Review Nutrition' : 'Log Nutrition'}
-              </Text>
-              <Text style={styles.subtitleText}>
-                {analysisResult
-                  ? 'Verify AI detected macronutrients and add to diary'
-                  : 'Snap a photo, scan a barcode, or describe your meal'}
-              </Text>
-            </View>
-          )}
+  // ==========================================
+  // VIEW A: DEDICATED FULL-SCREEN CAMERA VIEW
+  // ==========================================
+  if (isCameraMode) {
+    return (
+      <View style={styles.cameraFullScreenContainer}>
+        {/* 1. Full Screen Camera Viewport (100% Dimensions) */}
+        {activeTab === 'photo' && (
+          <CameraScanner
+            onCapturePhoto={handleCapturePhoto}
+            isProcessing={isProcessing}
+          />
+        )}
+        {activeTab === 'label' && (
+          <NutritionLabelScanner
+            onCaptureLabel={handleCaptureLabel}
+            isProcessing={isProcessing}
+          />
+        )}
+        {activeTab === 'barcode' && (
+          <BarcodeScanner
+            onScanBarcode={handleScanBarcode}
+            isProcessing={isProcessing}
+          />
+        )}
 
-          {/* 5-Tab Mode Selector Pills */}
-          {!analysisResult && (
-            <View style={[styles.tabBarContainer, isCameraMode && styles.cameraTabBarContainer]}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tabScrollContent}
-              >
-                {TABS.map((tab) => {
-                  const isActive = activeTab === tab.key;
-                  return (
-                    <TouchableOpacity
-                      key={tab.key}
-                      style={[
-                        styles.tabBtn,
-                        isCameraMode && styles.cameraTabBtn,
-                        isActive && styles.tabBtnActive,
-                      ]}
-                      onPress={() => handleTabChange(tab.key)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={tab.icon}
-                        size={15}
-                        color={
-                          isActive
-                            ? colors.textInverse
-                            : isCameraMode
-                            ? '#FFFFFF'
-                            : colors.textSecondary
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.tabText,
-                          isCameraMode && styles.cameraTabText,
-                          isActive && styles.tabTextActive,
-                        ]}
-                      >
-                        {tab.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
+        {/* 2. Floating Top Header & Tab Pills (respects insets.top) */}
+        <View style={[styles.floatingHeaderWrapper, { top: insets.top + 8 }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabScrollContent}
+          >
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[
+                    styles.cameraTabBtn,
+                    isActive && styles.cameraTabBtnActive,
+                  ]}
+                  onPress={() => handleTabChange(tab.key)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={tab.icon}
+                    size={15}
+                    color={isActive ? colors.textInverse : '#FFFFFF'}
+                  />
+                  <Text
+                    style={[
+                      styles.cameraTabText,
+                      isActive && styles.cameraTabTextActive,
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
-        {/* Processing Indicator Overlay */}
+        {/* 3. Processing Overlay */}
+        {isProcessing && (
+          <View style={styles.processingOverlay}>
+            <View style={styles.processingCard}>
+              <ActivityIndicator size="large" color={colors.sageBright} />
+              <Text style={styles.processingTitle}>Analyzing with AI</Text>
+              <Text style={styles.processingText}>{statusMessage}</Text>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // ==========================================
+  // VIEW B: REVIEW RESULT & FORM ENTRY VIEW
+  // ==========================================
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <View style={styles.container}>
+        {/* Header Title */}
+        <View style={styles.header}>
+          <Text style={styles.titleText}>
+            {analysisResult ? 'Review Nutrition' : 'Log Nutrition'}
+          </Text>
+          <Text style={styles.subtitleText}>
+            {analysisResult
+              ? 'Verify AI detected macronutrients and add to diary'
+              : 'Snap a photo, scan a barcode, or describe your meal'}
+          </Text>
+        </View>
+
+        {/* 5-Tab Mode Selector Pills (When not reviewing) */}
+        {!analysisResult && (
+          <View style={styles.tabBarContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabScrollContent}
+            >
+              {TABS.map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+                    onPress={() => handleTabChange(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={tab.icon}
+                      size={15}
+                      color={isActive ? colors.textInverse : colors.textSecondary}
+                    />
+                    <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Processing Overlay */}
         {isProcessing && (
           <View style={styles.processingOverlay}>
             <View style={styles.processingCard}>
@@ -284,7 +342,7 @@ export default function LogMealScreen({ navigation }) {
           </View>
         )}
 
-        {/* Main Viewport Content */}
+        {/* Main Content Area */}
         {analysisResult ? (
           <View style={styles.resultContainer}>
             <FoodAnalysisResult
@@ -299,15 +357,7 @@ export default function LogMealScreen({ navigation }) {
             />
           </View>
         ) : (
-          <View style={[styles.tabContent, isCameraMode && styles.cameraTabContent]}>
-            {/* TAB 1: PHOTO SCANNER */}
-            {activeTab === 'photo' && (
-              <CameraScanner
-                onCapturePhoto={handleCapturePhoto}
-                isProcessing={isProcessing}
-              />
-            )}
-
+          <View style={styles.tabContent}>
             {/* TAB 2: TEXT AI PARSER */}
             {activeTab === 'text' && (
               <ScrollView
@@ -362,22 +412,6 @@ export default function LogMealScreen({ navigation }) {
                   />
                 </Card>
               </ScrollView>
-            )}
-
-            {/* TAB 3: NUTRITION LABEL OCR */}
-            {activeTab === 'label' && (
-              <NutritionLabelScanner
-                onCaptureLabel={handleCaptureLabel}
-                isProcessing={isProcessing}
-              />
-            )}
-
-            {/* TAB 4: BARCODE SCANNER */}
-            {activeTab === 'barcode' && (
-              <BarcodeScanner
-                onScanBarcode={handleScanBarcode}
-                isProcessing={isProcessing}
-              />
             )}
 
             {/* TAB 5: MANUAL LOGGING */}
@@ -486,31 +520,33 @@ export default function LogMealScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  cameraFullScreenContainer: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000000',
+    position: 'relative',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  cameraSafeArea: {
-    backgroundColor: '#000000',
-  },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-  },
-  cameraContainer: {
-    backgroundColor: '#000000',
-  },
-  headerWrapper: {
     paddingHorizontal: 16,
     paddingTop: 12,
   },
   floatingHeaderWrapper: {
     position: 'absolute',
-    top: 8,
-    left: 0,
-    right: 0,
-    zIndex: 25,
-    paddingHorizontal: 12,
+    left: 16,
+    right: 16,
+    zIndex: 30,
+    backgroundColor: 'rgba(18, 18, 20, 0.75)',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   header: {
     marginBottom: 12,
@@ -525,15 +561,6 @@ const styles = StyleSheet.create({
   },
   tabBarContainer: {
     marginBottom: 12,
-  },
-  cameraTabBarContainer: {
-    backgroundColor: 'rgba(18, 18, 20, 0.75)',
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    marginBottom: 0,
   },
   tabScrollContent: {
     flexDirection: 'row',
@@ -552,14 +579,21 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   cameraTabBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'transparent',
-    borderColor: 'transparent',
     paddingVertical: 7,
     paddingHorizontal: 12,
+    borderRadius: radius.full,
+    marginRight: 4,
   },
   tabBtnActive: {
     backgroundColor: colors.sageBright,
     borderColor: colors.sageBright,
+  },
+  cameraTabBtnActive: {
+    backgroundColor: colors.sageBright,
   },
   tabText: {
     fontSize: 12,
@@ -568,26 +602,24 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   cameraTabText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: 'rgba(255, 255, 255, 0.85)',
+    marginLeft: 5,
   },
   tabTextActive: {
     color: colors.textInverse,
     fontWeight: '700',
   },
+  cameraTabTextActive: {
+    color: colors.textInverse,
+    fontWeight: '700',
+  },
   tabContent: {
     flex: 1,
-    paddingHorizontal: 16,
-  },
-  cameraTabContent: {
-    paddingHorizontal: 0,
-    flex: 1,
-    width: '100%',
-    height: '100%',
   },
   resultContainer: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
     paddingBottom: 90,
   },
   scrollForm: {
