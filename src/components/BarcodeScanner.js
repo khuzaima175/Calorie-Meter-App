@@ -24,12 +24,6 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [scanned, setScanned] = useState(false);
-  const [cameraKey, setCameraKey] = useState(0);
-
-  // Force remount on mount
-  useEffect(() => {
-    setCameraKey((k) => k + 1);
-  }, []);
 
   if (!permission) {
     return (
@@ -83,7 +77,6 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
       {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
-          key={cameraKey}
           style={StyleSheet.absoluteFillObject}
           facing="back"
           enableTorch={torch}
@@ -196,7 +189,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#000000',
     position: 'relative',
-    overflow: 'hidden',
   },
   centerContainer: {
     flex: 1,

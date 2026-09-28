@@ -75,11 +75,7 @@ export default function TabNavigator() {
   };
 
   // Ensure floating tab bar sits cleanly above Android system nav bar or iOS Home indicator
-  const bottomBarOffset = Platform.select({
-    ios: (insets.bottom || 0) + 8,
-    android: insets.bottom > 0 ? insets.bottom + 6 : 18,
-    default: 16,
-  });
+  const bottomBarOffset = (insets.bottom || 0) + 8;
 
   return (
     <View style={styles.container}>

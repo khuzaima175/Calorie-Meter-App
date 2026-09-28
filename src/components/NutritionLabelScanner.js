@@ -22,13 +22,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [facing, setFacing] = useState('back');
-  const [cameraKey, setCameraKey] = useState(0);
   const cameraRef = useRef(null);
-
-  // Force remount on mount
-  useEffect(() => {
-    setCameraKey((k) => k + 1);
-  }, []);
 
   if (!permission) {
     return (
@@ -118,7 +112,6 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
       {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
-          key={cameraKey}
           ref={cameraRef}
           style={StyleSheet.absoluteFillObject}
           facing={facing}
@@ -228,7 +221,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#000000',
     position: 'relative',
-    overflow: 'hidden',
   },
   centerContainer: {
     flex: 1,

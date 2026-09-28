@@ -1,7 +1,7 @@
 // src/components/CameraScanner.js
-// Live Fullscreen AI Food Camera Viewfinder with Inset-Driven Overlays & Focus Remount
+// Live Fullscreen AI Food Camera Viewfinder with Inset-Driven Overlays
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,13 +22,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [facing, setFacing] = useState('back');
-  const [cameraKey, setCameraKey] = useState(0);
   const cameraRef = useRef(null);
-
-  // Force a remount on mount to ensure Android Camera2 session initializes properly
-  useEffect(() => {
-    setCameraKey((k) => k + 1);
-  }, []);
 
   if (!permission) {
     return (
@@ -124,7 +118,6 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
       {/* 1. Live Native Camera View */}
       {permission.granted && (
         <CameraView
-          key={cameraKey}
           ref={cameraRef}
           style={StyleSheet.absoluteFillObject}
           facing={facing}
@@ -232,7 +225,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#000000',
     position: 'relative',
-    overflow: 'hidden',
   },
   centerContainer: {
     flex: 1,

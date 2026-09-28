@@ -108,7 +108,6 @@ const styles = StyleSheet.create({
     maxWidth: Platform.OS === 'web' ? 460 : undefined,
     backgroundColor: colors.background,
     position: 'relative',
-    overflow: 'hidden',
   },
 });
 
