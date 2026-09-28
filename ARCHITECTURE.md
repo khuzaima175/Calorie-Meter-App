@@ -94,14 +94,32 @@ graph TD
 
 ## 3. Presentation Layer & Viewport Architecture
 
-### Safe-Area & Viewport Management
-- Root layout is wrapped in `SafeAreaProvider` with `initialWindowMetrics`.
-- Top and bottom system bar insets are managed via `useSafeAreaInsets` to ensure floating headers and bottom navigation clear notches, dynamic islands, and home indicator bars.
+### 1. Safe-Area & Inset Clamp Architecture
+- **Zero-Inset Race Condition Prevention**: On initial Android boot, `useSafeAreaInsets` often evaluates to `{ top: 0, bottom: 0 }` during the first layout pass before window metrics resolve. To eliminate bottom bar flicker and clipping on Android 3-button navigation bars and iOS Home Indicators, the root tree is initialized with:
+  ```javascript
+  <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+  ```
+- **Dynamic Inset Clamping**: The bottom tab navigation bar in [`TabNavigator.js`](file:///g:/Important%20Projects/calorie%20meter/src/navigation/TabNavigator.js) enforces a defensive clamp:
+  ```javascript
+  paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 16 : 8)
+  ```
+  This guarantees that even on devices where the system reports `insets.bottom = 0`, the tab bar always maintains at least 16dp of breathing room above hardware or gesture bars.
 
-### Android SurfaceView Hardware Layering
+### 2. Docked 5-Slot Bottom Navigation Bar Architecture
+- **Symmetric Layout**: 5 slots distributed as:
+  1. `Dashboard` (Home overview, daily calorie ring, macro bars, water gauge)
+  2. `Activity` (MET workout logs, exercise active minutes)
+  3. `Camera Shutter` (Elevated center button with animated micro-scale spring feedback)
+  4. `Assistant` (Sage AI nutritionist chat, daily diet review, meal planner)
+  5. `Settings` (Profile metrics, BMR/TDEE targets, notifications, JSON backup/restore)
+- **Decoupled Full-Screen Camera Mode**:
+  - When the user presses the center camera button or navigates to `LogMealScreen`, the app activates `isCameraMode`.
+  - In `isCameraMode`, the screen switches to a dedicated full-screen overlay that replaces the bottom navigation bar with a dedicated camera control bar (system camera launcher, gallery picker, camera lens flip, and live multi-photo capture tray) alongside a floating top-left close button (`X`), preventing navigation bar collisions.
+
+### 3. Android SurfaceView Hardware Layering & Full-Bleed Rendering
 In Android's graphics pipeline, React Native's `CameraView` uses a native `SurfaceView`/`TextureView` that renders on a dedicated hardware layer behind the application view tree:
-- If parent containers have opaque background colors (e.g., `#000000` or `#121214`), React Native's Android `ViewGroup` renders an opaque box over the hardware surface hole, obscuring the camera everywhere except behind the translucent system status bar.
-- **Architectural Solution**: Container wrappers in [`LogMealScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/LogMealScreen.js) and [`CameraScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/CameraScanner.js) enforce `backgroundColor: 'transparent'` and `...StyleSheet.absoluteFillObject` coordinates, allowing the camera hardware surface to render full-bleed across 100% of the screen.
+- **The Black Viewport Problem**: If parent containers have opaque background colors (e.g., `#000000` or `#121214`), React Native's Android `ViewGroup` renders an opaque box over the hardware surface hole, obscuring the camera feed everywhere except behind the translucent system status bar.
+- **Architectural Solution**: Container wrappers in [`LogMealScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/LogMealScreen.js), [`CameraScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/CameraScanner.js), and [`NutritionLabelScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/NutritionLabelScanner.js) enforce `backgroundColor: 'transparent'` and `...StyleSheet.absoluteFillObject` coordinates, allowing the camera hardware surface to render full-bleed across 100% of the screen.
 
 ---
 
