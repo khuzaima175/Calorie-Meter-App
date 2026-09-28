@@ -10,13 +10,23 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  Share,
+  Modal,
+  TextInput,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useProfileStore, calculateMetabolism } from '../stores/useProfileStore';
 import { useNutritionStore } from '../stores/useNutritionStore';
-import { resetDatabaseToDemo, clearAllLogs } from '../services/databaseService';
+import {
+  resetDatabaseToDemo,
+  clearAllLogs,
+  factoryResetAllData,
+  exportAllDataJSON,
+  importAllDataJSON,
+} from '../services/databaseService';
 import { testGeminiApiKey } from '../services/geminiService';
 import Input from '../components/Input';
 import Button from '../components/Button';
@@ -68,6 +78,84 @@ export default function SettingsScreen() {
   const [isTestingKey, setIsTestingKey] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importJsonText, setImportJsonText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleExportJSON = async () => {
+    try {
+      const json = await exportAllDataJSON();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      if (Platform.OS === 'web') {
+        // Web: trigger download or copy
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          await navigator.clipboard.writeText(json);
+          Alert.alert('Backup Copied', 'Your full nutrition database backup has been copied to your clipboard!');
+        } else {
+          Alert.alert('Backup Generated', 'Backup JSON ready (length: ' + json.length + ' chars).');
+        }
+      } else {
+        await Share.share({
+          title: 'CalorieSnap_Backup.json',
+          message: json,
+        });
+      }
+    } catch (err) {
+      Alert.alert('Export Failed', err.message || 'Could not export backup data.');
+    }
+  };
+
+  const handleImportJSON = async () => {
+    if (!importJsonText.trim()) {
+      Alert.alert('Empty Input', 'Please paste valid JSON backup data.');
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const result = await importAllDataJSON(importJsonText.trim());
+      await useProfileStore.getState().loadProfile();
+      await refreshNutrition();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setImportModalVisible(false);
+      setImportJsonText('');
+      Alert.alert(
+        'Import Successful! ✓',
+        `Restored ${result.mealCount} meals, ${result.exerciseCount} workouts, and ${result.waterCount} hydration logs.`
+      );
+    } catch (err) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Import Failed', err.message || 'Malformed JSON backup file.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleFactoryReset = () => {
+    Alert.alert(
+      '⚠️ Factory Reset App',
+      'This will permanently delete ALL meals, workouts, hydration logs, custom goals, and profile metrics. The app will return to initial install state.\n\nAre you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Factory Reset',
+          style: 'destructive',
+          onPress: async () => {
+            await factoryResetAllData();
+            await useProfileStore.getState().loadProfile();
+            await refreshNutrition();
+            setName('Khzuaima');
+            setGender('male');
+            setAge('26');
+            setWeightKg('75');
+            setHeightCm('178');
+            setApiKey('');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+            Alert.alert('Reset Complete', 'All app data has been completely erased.');
+          },
+        },
+      ]
+    );
+  };
 
   const handleSaveProfile = async (autoRecalc = false) => {
     setIsSaving(true);
@@ -569,6 +657,37 @@ export default function SettingsScreen() {
         {/* Section 3: App & Data Tools */}
         <Text style={styles.sectionHeading}>Data & App Management</Text>
         <Card style={styles.card}>
+          {/* Export JSON */}
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={handleExportJSON}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionLeft}>
+              <Ionicons name="cloud-upload-outline" size={20} color={colors.sageBright} />
+              <Text style={styles.actionText}>Export Data Backup (JSON)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={styles.actionDivider} />
+
+          {/* Import JSON */}
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => setImportModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionLeft}>
+              <Ionicons name="cloud-download-outline" size={20} color={colors.sageBright} />
+              <Text style={styles.actionText}>Import Data Backup (JSON)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={styles.actionDivider} />
+
+          {/* Reload Demo */}
           <TouchableOpacity
             style={styles.actionRow}
             onPress={handleResetDemoData}
@@ -583,18 +702,90 @@ export default function SettingsScreen() {
 
           <View style={styles.actionDivider} />
 
+          {/* Clear Logs */}
           <TouchableOpacity
             style={styles.actionRow}
             onPress={handleClearAllLogs}
             activeOpacity={0.7}
           >
             <View style={styles.actionLeft}>
-              <Ionicons name="trash-outline" size={20} color={colors.error} />
-              <Text style={[styles.actionText, { color: colors.error }]}>Clear All Logs (Start From Scratch)</Text>
+              <Ionicons name="trash-outline" size={20} color={colors.caloriesBurned} />
+              <Text style={[styles.actionText, { color: colors.caloriesBurned }]}>Clear All Logs (Keep Profile)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={styles.actionDivider} />
+
+          {/* Factory Reset */}
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={handleFactoryReset}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionLeft}>
+              <Ionicons name="warning-outline" size={20} color={colors.error} />
+              <Text style={[styles.actionText, { color: colors.error, fontWeight: '700' }]}>
+                Factory Reset (Wipe All Data)
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
         </Card>
+
+        {/* Import JSON Modal */}
+        <Modal
+          visible={importModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setImportModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Import Backup JSON</Text>
+                <TouchableOpacity
+                  onPress={() => setImportModalVisible(false)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalSubtitle}>
+                Paste your previously exported CalorieSnap JSON backup below to restore your meals, exercises, and profile targets.
+              </Text>
+
+              <TextInput
+                style={styles.modalTextInput}
+                placeholder='Paste JSON here: {"version":1,"meals":[...]}'
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                numberOfLines={8}
+                value={importJsonText}
+                onChangeText={setImportJsonText}
+                textAlignVertical="top"
+              />
+
+              <View style={styles.modalBtnRow}>
+                <View style={{ flex: 1, marginRight: 6 }}>
+                  <Button
+                    title="Cancel"
+                    variant="secondary"
+                    onPress={() => setImportModalVisible(false)}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 6 }}>
+                  <Button
+                    title="Restore Data"
+                    onPress={handleImportJSON}
+                    loading={isImporting}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Medical Disclaimer Footer */}
         <View style={styles.disclaimerContainer}>
@@ -880,4 +1071,50 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 10,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.cardBackground,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    ...typography.title3,
+    fontSize: 18,
+  },
+  modalSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  modalTextInput: {
+    backgroundColor: colors.cardElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 12,
+    color: colors.textPrimary,
+    fontSize: 13,
+    height: 140,
+    marginBottom: 16,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
 });
+

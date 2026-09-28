@@ -56,12 +56,21 @@ export default function QuickAddModal({
   }, [visible, editMeal, initialMealType]);
 
   const handleSave = () => {
+    const calNum = Number(calories);
+    const protNum = Number(protein) || 0;
+    const carbsNum = Number(carbs) || 0;
+    const fatNum = Number(fat) || 0;
+
     if (!name.trim()) {
       setError('Please enter a meal name');
       return;
     }
-    if (!calories || isNaN(Number(calories)) || Number(calories) < 0) {
-      setError('Please enter valid calories');
+    if (isNaN(calNum) || calNum <= 0 || calNum > 10000) {
+      setError('Please enter realistic calories (1 - 10,000)');
+      return;
+    }
+    if (protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
+      setError('Macros must be positive realistic numbers');
       return;
     }
 
@@ -72,10 +81,10 @@ export default function QuickAddModal({
       id: editMeal?.id,
       name: name.trim(),
       meal_type: mealType,
-      calories: Number(calories),
-      protein: Number(protein) || 0,
-      carbs: Number(carbs) || 0,
-      fat: Number(fat) || 0,
+      calories: calNum,
+      protein: protNum,
+      carbs: carbsNum,
+      fat: fatNum,
       portion: portion.trim() || '1 serving',
       timestamp: editMeal?.timestamp || new Date().toISOString(),
     });

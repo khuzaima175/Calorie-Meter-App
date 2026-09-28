@@ -10,6 +10,7 @@ import { useProfileStore } from './stores/useProfileStore';
 import { useNutritionStore } from './stores/useNutritionStore';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingShimmer from './components/LoadingShimmer';
+import ErrorBoundary from './components/ErrorBoundary';
 import { colors } from './theme/colors';
 
 // Ensure full viewport on Web browser
@@ -82,7 +83,9 @@ function AppBootstrapper() {
 export default function App() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <AppBootstrapper />
+      <ErrorBoundary>
+        <AppBootstrapper />
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

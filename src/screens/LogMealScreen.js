@@ -52,10 +52,12 @@ export default function LogMealScreen({ navigation }) {
 
   const [activeTab, setActiveTab] = useState('photo');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [analysisResult, setAnalysisResult] = useState(null);
   const [capturedImageUri, setCapturedImageUri] = useState(null);
   const [capturedImageUris, setCapturedImageUris] = useState([]);
+  const barcodeReqIdRef = useRef(0);
 
   // Text AI Tab State
   const [textDescription, setTextDescription] = useState('');
@@ -159,65 +161,96 @@ export default function LogMealScreen({ navigation }) {
     }
   };
 
-  // 4. Barcode Lookup Handler
+  // 4. Barcode Lookup Handler (with stale request discard)
   const handleScanBarcode = async (barcode) => {
+    const currentReqId = ++barcodeReqIdRef.current;
     setIsProcessing(true);
     setStatusMessage(`Looking up barcode ${barcode}...`);
 
     try {
       const result = await lookupBarcode(barcode);
+      if (currentReqId !== barcodeReqIdRef.current) return;
       setAnalysisResult(result);
       if (result.image_uri) {
         setCapturedImageUri(result.image_uri);
       }
     } catch (err) {
+      if (currentReqId !== barcodeReqIdRef.current) return;
       Alert.alert(
         'Product Not Found',
         `${err.message}\nYou can log it manually or scan the Nutrition Facts label.`
       );
     } finally {
-      setIsProcessing(false);
-      setStatusMessage('');
+      if (currentReqId === barcodeReqIdRef.current) {
+        setIsProcessing(false);
+        setStatusMessage('');
+      }
     }
   };
 
-  // 5. Manual Save Handler
+  // 5. Manual Save Handler (with double-tap guard and strict bounds validation)
   const handleSaveManual = async () => {
+    if (isSaving) return;
+
+    const calNum = Number(manualCalories);
+    const protNum = Number(manualProtein) || 0;
+    const carbsNum = Number(manualCarbs) || 0;
+    const fatNum = Number(manualFat) || 0;
+
     if (!manualName.trim()) {
       Alert.alert('Missing Name', 'Please enter a food or meal name.');
       return;
     }
-    if (!manualCalories || isNaN(Number(manualCalories))) {
-      Alert.alert('Missing Calories', 'Please enter valid calories.');
+    if (isNaN(calNum) || calNum <= 0 || calNum > 10000) {
+      Alert.alert('Invalid Calories', 'Please enter realistic calories between 1 and 10,000.');
+      return;
+    }
+    if (protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
+      Alert.alert('Invalid Macros', 'Macronutrient values must be realistic positive numbers.');
       return;
     }
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setIsSaving(true);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-    await addMeal({
-      name: manualName.trim(),
-      meal_type: manualMealType,
-      portion: manualPortion.trim() || '1 serving',
-      calories: Number(manualCalories),
-      protein: Number(manualProtein) || 0,
-      carbs: Number(manualCarbs) || 0,
-      fat: Number(manualFat) || 0,
-    });
+      await addMeal({
+        name: manualName.trim(),
+        meal_type: manualMealType,
+        portion: manualPortion.trim() || '1 serving',
+        calories: calNum,
+        protein: protNum,
+        carbs: carbsNum,
+        fat: fatNum,
+      });
 
-    navigation.navigate('Dashboard');
+      navigation.navigate('Dashboard');
+    } catch (err) {
+      Alert.alert('Save Failed', err.message || 'Could not save meal.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // Save Confirmed AI Analysis Result
+  // Save Confirmed AI Analysis Result (with double-tap guard)
   const handleSaveAnalysisResult = async (finalMealData) => {
-    if (finalMealData.is_water) {
-      await logWater(finalMealData.water_ml || 250);
-    } else {
-      await addMeal(finalMealData);
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      if (finalMealData.is_water) {
+        await logWater(finalMealData.water_ml || 250);
+      } else {
+        await addMeal(finalMealData);
+      }
+      setAnalysisResult(null);
+      setCapturedImageUri(null);
+      setCapturedImageUris([]);
+      navigation.navigate('Dashboard');
+    } catch (err) {
+      Alert.alert('Save Failed', err.message || 'Could not save meal data.');
+    } finally {
+      setIsSaving(false);
     }
-    setAnalysisResult(null);
-    setCapturedImageUri(null);
-    setCapturedImageUris([]);
-    navigation.navigate('Dashboard');
   };
 
   // ==========================================
@@ -392,6 +425,7 @@ export default function LogMealScreen({ navigation }) {
               analysis={analysisResult}
               imageUri={capturedImageUri}
               imageUris={capturedImageUris}
+              isSaving={isSaving}
               onSave={handleSaveAnalysisResult}
               onCancel={() => {
                 setAnalysisResult(null);

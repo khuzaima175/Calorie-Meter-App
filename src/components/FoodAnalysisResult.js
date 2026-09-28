@@ -27,6 +27,7 @@ export default function FoodAnalysisResult({
   analysis,
   imageUri,
   imageUris,
+  isSaving = false,
   onSave,
   onCancel,
   onSwitchToText,
@@ -61,7 +62,7 @@ export default function FoodAnalysisResult({
       (Number(calories) === 0 && (!name.trim() || name.toLowerCase().includes('no food'))));
 
   const handleConfirmSave = () => {
-    if (isNoFoodDetected) return;
+    if (isNoFoodDetected || isSaving) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     onSave({
       name: name.trim() || (isWater ? 'Glass of Water' : 'Logged Meal'),
@@ -301,7 +302,8 @@ export default function FoodAnalysisResult({
                 : 'Log to Daily Intake'
             }
             onPress={handleConfirmSave}
-            disabled={isNoFoodDetected}
+            disabled={isNoFoodDetected || isSaving}
+            loading={isSaving}
             size="lg"
             style={styles.saveBtn}
           />

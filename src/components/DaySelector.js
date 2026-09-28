@@ -65,13 +65,18 @@ export default function DaySelector({ selectedDate, onSelectDate }) {
         <Text style={styles.dateSubtitle}>{getFormattedDate()}</Text>
       </View>
 
-      {/* Right chevron */}
+      {/* Right chevron (disabled if currently on today to prevent future logging) */}
       <TouchableOpacity
         onPress={handleNextDay}
-        style={styles.arrowButton}
+        disabled={isCurrentDayToday}
+        style={[styles.arrowButton, isCurrentDayToday && styles.arrowButtonDisabled]}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color={isCurrentDayToday ? colors.textDisabled || 'rgba(255,255,255,0.15)' : colors.textSecondary}
+        />
       </TouchableOpacity>
     </View>
   );
@@ -97,6 +102,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardElevated,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  arrowButtonDisabled: {
+    opacity: 0.35,
   },
   dateCenter: {
     alignItems: 'center',

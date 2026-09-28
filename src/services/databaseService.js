@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { format, addDays, subDays } from 'date-fns';
+import { persistImageAsync, deletePersistedImageAsync } from './imageService';
 
 const IS_WEB = Platform.OS === 'web';
 let SQLite = null;
@@ -253,7 +254,7 @@ export async function insertMeal(meal) {
   const sugar = Number(meal.sugar) || 0;
   const sodium = Number(meal.sodium) || 0;
   const portion = meal.portion || '1 serving';
-  const image_uri = meal.image_uri || null;
+  const image_uri = await persistImageAsync(meal.image_uri || null);
 
   if (IS_WEB || !dbInstance) {
     const newId = Date.now() + Math.floor(Math.random() * 1000);
@@ -321,11 +322,19 @@ export async function updateMeal(id, meal) {
 
 export async function deleteMealById(id) {
   if (IS_WEB || !dbInstance) {
+    const mealToDelete = webStore.meals.find((m) => m.id === id);
+    if (mealToDelete?.image_uri) {
+      await deletePersistedImageAsync(mealToDelete.image_uri);
+    }
     webStore.meals = webStore.meals.filter((m) => m.id !== id);
     saveWebStore();
     return;
   }
   const db = await getDB();
+  const mealToDelete = await db.getFirstAsync('SELECT image_uri FROM meals WHERE id = ?', [id]);
+  if (mealToDelete?.image_uri) {
+    await deletePersistedImageAsync(mealToDelete.image_uri);
+  }
   return await db.runAsync('DELETE FROM meals WHERE id = ?', [id]);
 }
 
@@ -643,6 +652,34 @@ export async function resetDatabaseToDemo() {
 }
 
 /**
+ * Factory Reset: Completely wipes all meals, exercises, water records, and custom profiles.
+ * Restores virgin state without loading demo data.
+ */
+export async function factoryResetAllData() {
+  if (IS_WEB || !dbInstance) {
+    webStore = {
+      meals: [],
+      exercises: [],
+      water_intake: [],
+      goals: { ...DEFAULT_GOALS },
+      profile: { ...DEFAULT_PROFILE },
+    };
+    saveWebStore();
+    return;
+  }
+  const db = await getDB();
+  await db.execAsync(`
+    DELETE FROM meals;
+    DELETE FROM exercises;
+    DELETE FROM water_intake;
+    DELETE FROM goals;
+    DELETE FROM profile;
+    PRAGMA user_version = 0;
+  `);
+  await migrateDatabase(db);
+}
+
+/**
  * Clears all meal logs, workout history, and water intake to start from a completely clean slate.
  */
 export async function clearAllLogs() {
@@ -660,3 +697,153 @@ export async function clearAllLogs() {
     DELETE FROM water_intake;
   `);
 }
+
+/**
+ * Exports all database records as a structured JSON backup
+ */
+export async function exportAllDataJSON() {
+  if (IS_WEB || !dbInstance) {
+    return JSON.stringify(
+      {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        profile: webStore.profile,
+        goals: webStore.goals,
+        meals: webStore.meals,
+        exercises: webStore.exercises,
+        water_intake: webStore.water_intake,
+      },
+      null,
+      2
+    );
+  }
+
+  const db = await getDB();
+  const profile = await db.getFirstAsync('SELECT * FROM profile WHERE id = 1');
+  const goals = await db.getFirstAsync('SELECT * FROM goals WHERE id = 1');
+  const meals = await db.getAllAsync('SELECT * FROM meals ORDER BY timestamp ASC');
+  const exercises = await db.getAllAsync('SELECT * FROM exercises ORDER BY timestamp ASC');
+  const water_intake = await db.getAllAsync('SELECT * FROM water_intake ORDER BY timestamp ASC');
+
+  return JSON.stringify(
+    {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      profile,
+      goals,
+      meals,
+      exercises,
+      water_intake,
+    },
+    null,
+    2
+  );
+}
+
+/**
+ * Imports database records from a structured JSON backup with validation
+ */
+export async function importAllDataJSON(jsonString) {
+  let parsed;
+  try {
+    parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+  } catch (err) {
+    throw new Error('Invalid JSON format. Please provide a valid backup file.');
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Malformed backup object.');
+  }
+
+  if (IS_WEB || !dbInstance) {
+    if (parsed.profile) webStore.profile = { ...DEFAULT_PROFILE, ...parsed.profile };
+    if (parsed.goals) webStore.goals = { ...DEFAULT_GOALS, ...parsed.goals };
+    if (Array.isArray(parsed.meals)) webStore.meals = parsed.meals;
+    if (Array.isArray(parsed.exercises)) webStore.exercises = parsed.exercises;
+    if (Array.isArray(parsed.water_intake)) webStore.water_intake = parsed.water_intake;
+    saveWebStore();
+    return {
+      mealCount: webStore.meals.length,
+      exerciseCount: webStore.exercises.length,
+      waterCount: webStore.water_intake.length,
+    };
+  }
+
+  const db = await getDB();
+
+  // Clean existing data
+  await db.execAsync(`
+    DELETE FROM meals;
+    DELETE FROM exercises;
+    DELETE FROM water_intake;
+  `);
+
+  if (parsed.profile) {
+    await saveProfile(parsed.profile);
+  }
+  if (parsed.goals) {
+    await saveGoals(parsed.goals);
+  }
+
+  let mealCount = 0;
+  if (Array.isArray(parsed.meals)) {
+    for (const m of parsed.meals) {
+      await insertMeal(m);
+      mealCount++;
+    }
+  }
+
+  let exerciseCount = 0;
+  if (Array.isArray(parsed.exercises)) {
+    for (const e of parsed.exercises) {
+      await insertExercise(e);
+      exerciseCount++;
+    }
+  }
+
+  let waterCount = 0;
+  if (Array.isArray(parsed.water_intake)) {
+    for (const w of parsed.water_intake) {
+      await addWaterIntake(w.amount_ml, w.date);
+      waterCount++;
+    }
+  }
+
+  return { mealCount, exerciseCount, waterCount };
+}
+
+/**
+ * Computes 7-day nutritional summary up to endDate
+ */
+export async function get7DaySummary(endDate = getTodayString()) {
+  const dates = [];
+  const [year, month, day] = endDate.split('-').map(Number);
+  const endDateTime = new Date(year, month - 1, day);
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(endDateTime);
+    d.setDate(d.getDate() - i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
+  }
+
+  const summary = [];
+  for (const d of dates) {
+    const daily = await getDailySummary(d);
+    summary.push({
+      date: d,
+      calories: daily.totals.calories,
+      caloriesBurned: daily.totals.caloriesBurned,
+      netCalories: daily.totals.netCalories,
+      protein: daily.totals.protein,
+      carbs: daily.totals.carbs,
+      fat: daily.totals.fat,
+      waterMl: daily.totals.waterMl,
+    });
+  }
+
+  return summary;
+}
+

@@ -22,6 +22,7 @@ import DaySelector from '../components/DaySelector';
 import WaterTracker from '../components/WaterTracker';
 import MealSection from '../components/MealSection';
 import QuickAddModal from '../components/QuickAddModal';
+import WeeklyTrendsCard from '../components/WeeklyTrendsCard';
 import Card from '../components/Card';
 import { colors, radius, typography } from '../theme/colors';
 
@@ -216,6 +217,13 @@ export default function DashboardScreen({ navigation }) {
           goal={goals.water_ml}
           onAddWater={logWater}
           onUndoWater={undoWater}
+        />
+
+        {/* 7-Day Nutrition Trends */}
+        <WeeklyTrendsCard
+          selectedDate={selectedDate}
+          targetCalories={goals.calories || 2000}
+          onSelectDate={(newDate) => setSelectedDate(newDate)}
         />
 
         {/* Activity Shortcut Card */}

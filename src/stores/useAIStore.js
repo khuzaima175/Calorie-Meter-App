@@ -51,12 +51,15 @@ export const useAIStore = create((set, get) => ({
     };
 
     const currentHistory = get().messages;
-    const updatedHistory = [...currentHistory, userMsg, aiPlaceholder];
+    const boundedHistory = currentHistory.slice(-40);
+    const updatedHistory = [...boundedHistory, userMsg, aiPlaceholder];
     set({ messages: updatedHistory, isGenerating: true, error: null });
 
     try {
+      // Pass only the last 16 messages as context to guarantee staying within fast token budgets
+      const contextHistory = currentHistory.slice(-16).map((m) => ({ role: m.role, text: m.text }));
       const replyText = await sendNutritionistChatMessage(
-        currentHistory.map((m) => ({ role: m.role, text: m.text })),
+        contextHistory,
         text.trim(),
         userContext
       );
