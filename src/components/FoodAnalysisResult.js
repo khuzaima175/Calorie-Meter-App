@@ -1,5 +1,5 @@
 // src/components/FoodAnalysisResult.js
-// Interactive review & edit card for AI food analysis results
+// Interactive review & edit card for AI food analysis results with non-food guard & retake action
 
 import React, { useState } from 'react';
 import {
@@ -28,6 +28,7 @@ export default function FoodAnalysisResult({
   imageUri,
   onSave,
   onCancel,
+  onSwitchToText,
 }) {
   const [name, setName] = useState(analysis?.name || '');
   const [mealType, setMealType] = useState(analysis?.meal_type || 'lunch');
@@ -38,7 +39,14 @@ export default function FoodAnalysisResult({
   const [fat, setFat] = useState(String(analysis?.fat || 0));
   const [fiber, setFiber] = useState(String(analysis?.fiber || 0));
 
+  // Non-food / empty recognition check
+  const isNoFoodDetected =
+    !analysis?.name ||
+    analysis.name.toLowerCase().includes('no food') ||
+    (Number(calories) === 0 && (!name.trim() || name.toLowerCase().includes('no food')));
+
   const handleConfirmSave = () => {
+    if (isNoFoodDetected) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     onSave({
       name: name.trim() || 'Logged Meal',
@@ -59,36 +67,69 @@ export default function FoodAnalysisResult({
       {/* Photo preview if available */}
       {imageUri ? (
         <View style={styles.imageContainer}>
-          <Image source={{ uri: imageUri }} style={styles.image} />
-          {analysis?.confidence && (
+          <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+          {analysis?.confidence && !isNoFoodDetected ? (
             <View style={styles.confidenceBadge}>
               <Ionicons name="sparkles" size={12} color={colors.sageBright} />
               <Text style={styles.confidenceText}>
                 {Math.round(analysis.confidence * 100)}% AI Match
               </Text>
             </View>
-          )}
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Non-Food / Invalid Photo Banner */}
+      {isNoFoodDetected ? (
+        <View style={styles.noFoodWarningBox}>
+          <View style={styles.warningHeader}>
+            <Ionicons name="alert-circle" size={22} color={colors.warning} />
+            <Text style={styles.warningTitle}>No Food Recognized</Text>
+          </View>
+          <Text style={styles.warningBody}>
+            The AI could not identify any edible food in this photo. Please retake the photo with your meal clearly in view.
+          </Text>
+
+          <View style={styles.warningBtnRow}>
+            <Button
+              title="Retake Photo"
+              onPress={onCancel}
+              size="md"
+              style={styles.retakeBtn}
+            />
+            {onSwitchToText && (
+              <Button
+                title="Describe Instead"
+                onPress={onSwitchToText}
+                variant="outline"
+                size="md"
+                style={styles.describeBtn}
+              />
+            )}
+          </View>
         </View>
       ) : null}
 
       {/* Main Analysis Card */}
       <View style={styles.card}>
         {/* Health Score & Tags */}
-        <View style={styles.scoreRow}>
-          {analysis?.health_score ? (
-            <View style={styles.healthScorePill}>
-              <Text style={styles.healthScoreText}>
-                Health Score: <Text style={styles.scoreNum}>{analysis.health_score}/10</Text>
-              </Text>
-            </View>
-          ) : null}
+        {!isNoFoodDetected && (
+          <View style={styles.scoreRow}>
+            {analysis?.health_score ? (
+              <View style={styles.healthScorePill}>
+                <Text style={styles.healthScoreText}>
+                  Health Score: <Text style={styles.scoreNum}>{analysis.health_score}/10</Text>
+                </Text>
+              </View>
+            ) : null}
 
-          {analysis?.dietary_tags?.map((tag, idx) => (
-            <View key={idx} style={styles.tagPill}>
-              <Text style={styles.tagText}>{tag}</Text>
-            </View>
-          ))}
-        </View>
+            {analysis?.dietary_tags?.map((tag, idx) => (
+              <View key={idx} style={styles.tagPill}>
+                <Text style={styles.tagText}>{tag}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Meal Type Selection */}
         <Text style={styles.sectionHeading}>Meal Category</Text>
@@ -168,7 +209,7 @@ export default function FoodAnalysisResult({
         </View>
 
         {/* Health Insights */}
-        {analysis?.health_tips ? (
+        {analysis?.health_tips && !isNoFoodDetected ? (
           <View style={styles.insightBox}>
             <View style={styles.insightHeader}>
               <Ionicons name="leaf-outline" size={16} color={colors.sageBright} />
@@ -181,14 +222,15 @@ export default function FoodAnalysisResult({
         {/* Action Buttons */}
         <View style={styles.btnRow}>
           <Button
-            title="Log to Daily Intake"
+            title={isNoFoodDetected ? 'Cannot Log (No Food)' : 'Log to Daily Intake'}
             onPress={handleConfirmSave}
+            disabled={isNoFoodDetected}
             size="lg"
             style={styles.saveBtn}
           />
 
           <Button
-            title="Discard"
+            title="Discard & Retake"
             onPress={onCancel}
             variant="ghost"
             size="md"
@@ -211,6 +253,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginBottom: 16,
+    backgroundColor: '#000',
   },
   image: {
     width: '100%',
@@ -234,6 +277,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.sageBright,
     marginLeft: 4,
+  },
+  noFoodWarningBox: {
+    backgroundColor: 'rgba(255, 209, 102, 0.1)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 209, 102, 0.3)',
+    padding: 16,
+    marginBottom: 16,
+  },
+  warningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  warningTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFD166',
+    marginLeft: 8,
+  },
+  warningBody: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  warningBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  retakeBtn: {
+    flex: 1,
+    marginRight: 8,
+  },
+  describeBtn: {
+    flex: 1,
   },
   card: {
     backgroundColor: colors.cardBackground,

@@ -1,7 +1,7 @@
 // src/components/NutritionLabelScanner.js
-// Specialized fullscreen camera viewfinder for Nutrition Facts label OCR scanning
+// Live Fullscreen Camera Viewfinder for Nutrition Facts OCR with Inset Overlays & Remount
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -17,10 +18,17 @@ import Button from './Button';
 import { colors, radius, typography } from '../theme/colors';
 
 export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = false }) {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [facing, setFacing] = useState('back');
+  const [cameraKey, setCameraKey] = useState(0);
   const cameraRef = useRef(null);
+
+  // Force remount on mount
+  useEffect(() => {
+    setCameraKey((k) => k + 1);
+  }, []);
 
   if (!permission) {
     return (
@@ -33,7 +41,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
   if (!permission.granted) {
     return (
-      <View style={styles.permissionWrapper}>
+      <View style={[styles.permissionWrapper, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }]}>
         <View style={styles.permissionCard}>
           <View style={styles.iconCircle}>
             <Ionicons name="document-text" size={36} color={colors.sageBright} />
@@ -107,18 +115,26 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
   return (
     <View style={styles.container}>
-      {/* Live Camera Feed */}
-      <CameraView
-        style={StyleSheet.absoluteFillObject}
-        facing={facing}
-        enableTorch={torch}
-        ref={cameraRef}
-      />
+      {/* 1. Live Native Camera Feed */}
+      {permission.granted && (
+        <CameraView
+          key={cameraKey}
+          ref={cameraRef}
+          style={StyleSheet.absoluteFillObject}
+          facing={facing}
+          enableTorch={torch}
+        />
+      )}
 
-      {/* Floating UI Overlay */}
-      <View style={styles.overlayContainer} pointerEvents="box-none">
-        {/* Top Controls */}
-        <View style={styles.topBar}>
+      {/* 2. Sibling Inset-Driven Overlay */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+        {/* Top Control Bar: positioned below the status bar & top tab pills */}
+        <View
+          style={[
+            styles.topControlsRow,
+            { top: insets.top + 54 },
+          ]}
+        >
           <TouchableOpacity
             style={[styles.circleControlBtn, torch && styles.torchActiveBtn]}
             onPress={() => setTorch(!torch)}
@@ -132,7 +148,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
           </TouchableOpacity>
 
           <View style={styles.tipsBadge}>
-            <Ionicons name="document-text-outline" size={14} color={colors.sageBright} />
+            <Ionicons name="document-text-outline" size={13} color={colors.sageBright} />
             <Text style={styles.tipsText}>Align Nutrition Facts table</Text>
           </View>
 
@@ -145,8 +161,8 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
           </TouchableOpacity>
         </View>
 
-        {/* Vertical Nutrition Label Viewfinder Frame */}
-        <View style={styles.frameContainer} pointerEvents="none">
+        {/* Center Vertical Viewfinder Reticle */}
+        <View style={styles.centerReticleLayer} pointerEvents="none">
           <View style={styles.labelFrame}>
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
@@ -160,10 +176,15 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
           </View>
         </View>
 
-        {/* Bottom Controls */}
-        <View style={styles.bottomBar}>
+        {/* Bottom Controls Row: clears floating tab bar */}
+        <View
+          style={[
+            styles.bottomControlsRow,
+            { bottom: insets.bottom + 96 },
+          ]}
+        >
           <TouchableOpacity
-            style={styles.galleryBtn}
+            style={styles.actionBtn}
             onPress={handlePickFromGallery}
             disabled={isProcessing}
             activeOpacity={0.7}
@@ -190,11 +211,9 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
             </View>
           </TouchableOpacity>
 
-          <View style={styles.aiBadgeWrapper}>
-            <View style={styles.aiBadge}>
-              <Ionicons name="document-text" size={18} color={colors.sageBright} />
-              <Text style={styles.actionLabel}>OCR AI</Text>
-            </View>
+          <View style={styles.actionBtn}>
+            <Ionicons name="document-text" size={20} color={colors.sageBright} />
+            <Text style={styles.actionLabel}>OCR AI</Text>
           </View>
         </View>
       </View>
@@ -208,11 +227,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     position: 'relative',
     overflow: 'hidden',
-  },
-  overlayContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
-    zIndex: 10,
   },
   centerContainer: {
     flex: 1,
@@ -230,7 +244,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
-    padding: 20,
+    paddingHorizontal: 20,
   },
   permissionCard: {
     width: '100%',
@@ -277,18 +291,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginLeft: 6,
   },
-  topBar: {
+  topControlsRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    zIndex: 10,
   },
   circleControlBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(18, 18, 20, 0.65)',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(18, 18, 20, 0.7)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
@@ -301,12 +317,12 @@ const styles = StyleSheet.create({
   tipsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(18, 18, 20, 0.75)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: 'rgba(18, 18, 20, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   tipsText: {
     fontSize: 12,
@@ -314,14 +330,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginLeft: 6,
   },
-  frameContainer: {
-    flex: 1,
-    alignItems: 'center',
+  centerReticleLayer: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
   },
   labelFrame: {
     width: 250,
-    height: 330,
+    height: 320,
     position: 'relative',
     justifyContent: 'flex-start',
     alignItems: 'center',
@@ -378,17 +395,19 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     letterSpacing: 0.5,
   },
-  bottomBar: {
+  bottomControlsRow: {
+    position: 'absolute',
+    left: 32,
+    right: 32,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 36,
-    paddingBottom: 90,
+    zIndex: 10,
   },
-  galleryBtn: {
+  actionBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 60,
+    width: 56,
   },
   actionLabel: {
     fontSize: 11,
@@ -397,9 +416,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   shutterOuter: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -407,9 +426,9 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   shutterRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
     borderWidth: 4,
     borderColor: '#FFFFFF',
     alignItems: 'center',
@@ -417,9 +436,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.2)',
   },
   shutterInner: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: colors.sageBright,
     alignItems: 'center',
     justifyContent: 'center',
@@ -428,14 +447,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 6,
     elevation: 4,
-  },
-  aiBadgeWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 60,
-  },
-  aiBadge: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

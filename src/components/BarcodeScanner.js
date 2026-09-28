@@ -1,7 +1,7 @@
 // src/components/BarcodeScanner.js
-// Live Barcode Scanner with fullscreen camera, target frame, laser line and manual barcode lookup
+// Live Fullscreen Barcode Scanner with Inset Overlays, Laser Target & Manual Entry
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Input from './Input';
@@ -17,11 +18,18 @@ import Button from './Button';
 import { colors, radius, typography } from '../theme/colors';
 
 export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [cameraKey, setCameraKey] = useState(0);
+
+  // Force remount on mount
+  useEffect(() => {
+    setCameraKey((k) => k + 1);
+  }, []);
 
   if (!permission) {
     return (
@@ -34,7 +42,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
 
   if (!permission.granted) {
     return (
-      <View style={styles.permissionWrapper}>
+      <View style={[styles.permissionWrapper, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }]}>
         <View style={styles.permissionCard}>
           <View style={styles.iconCircle}>
             <Ionicons name="barcode" size={36} color={colors.sageBright} />
@@ -72,21 +80,29 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
 
   return (
     <View style={styles.container}>
-      {/* Live Camera Feed */}
-      <CameraView
-        style={StyleSheet.absoluteFillObject}
-        facing="back"
-        enableTorch={torch}
-        barcodeScannerSettings={{
-          barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
-        }}
-        onBarcodeScanned={scanned || isProcessing ? undefined : handleBarcodeScanned}
-      />
+      {/* 1. Live Native Camera Feed */}
+      {permission.granted && (
+        <CameraView
+          key={cameraKey}
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          enableTorch={torch}
+          barcodeScannerSettings={{
+            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
+          }}
+          onBarcodeScanned={scanned || isProcessing ? undefined : handleBarcodeScanned}
+        />
+      )}
 
-      {/* Floating Overlay Layer */}
-      <View style={styles.overlayContainer} pointerEvents="box-none">
-        {/* Top Controls */}
-        <View style={styles.topBar}>
+      {/* 2. Sibling Inset-Driven Overlay */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+        {/* Top Controls Row */}
+        <View
+          style={[
+            styles.topControlsRow,
+            { top: insets.top + 54 },
+          ]}
+        >
           <TouchableOpacity
             style={[styles.circleControlBtn, torch && styles.torchActiveBtn]}
             onPress={() => setTorch(!torch)}
@@ -100,30 +116,35 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
           </TouchableOpacity>
 
           <View style={styles.statusBadge}>
-            <Ionicons name="scan" size={14} color={colors.sageBright} />
+            <Ionicons name="scan" size={13} color={colors.sageBright} />
             <Text style={styles.statusText}>
               {isProcessing ? 'Looking up product...' : 'Align barcode inside frame'}
             </Text>
           </View>
 
-          <View style={{ width: 44 }} />
+          <View style={{ width: 42 }} />
         </View>
 
-        {/* Viewfinder Frame */}
-        <View style={styles.frameContainer} pointerEvents="none">
+        {/* Center Viewfinder Reticle with Laser Line */}
+        <View style={styles.centerReticleLayer} pointerEvents="none">
           <View style={styles.targetFrame}>
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.bottomLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
 
-            {/* Glowing Laser line */}
+            {/* Laser line */}
             <View style={styles.laserLine} />
           </View>
         </View>
 
-        {/* Bottom Manual Entry Drawer / Toggle */}
-        <View style={styles.bottomDrawer}>
+        {/* Bottom Manual Entry Drawer / Toggle: clears floating tab bar */}
+        <View
+          style={[
+            styles.bottomControlsRow,
+            { bottom: insets.bottom + 96 },
+          ]}
+        >
           {showManualInput ? (
             <View style={styles.manualBox}>
               <View style={styles.manualHeader}>
@@ -175,11 +196,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-  overlayContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
-    zIndex: 10,
-  },
   centerContainer: {
     flex: 1,
     alignItems: 'center',
@@ -196,7 +212,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
-    padding: 20,
+    paddingHorizontal: 20,
   },
   permissionCard: {
     width: '100%',
@@ -230,18 +246,20 @@ const styles = StyleSheet.create({
   permBtn: {
     width: '100%',
   },
-  topBar: {
+  topControlsRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    zIndex: 10,
   },
   circleControlBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(18, 18, 20, 0.65)',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(18, 18, 20, 0.7)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
@@ -254,12 +272,12 @@ const styles = StyleSheet.create({
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(18, 18, 20, 0.75)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: 'rgba(18, 18, 20, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   statusText: {
     fontSize: 12,
@@ -267,14 +285,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginLeft: 6,
   },
-  frameContainer: {
-    flex: 1,
-    alignItems: 'center',
+  centerReticleLayer: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
   },
   targetFrame: {
-    width: 290,
-    height: 190,
+    width: 280,
+    height: 180,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
@@ -322,10 +341,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 8,
   },
-  bottomDrawer: {
-    paddingHorizontal: 20,
-    paddingBottom: 95,
+  bottomControlsRow: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
     alignItems: 'center',
+    zIndex: 10,
   },
   manualToggleBtn: {
     flexDirection: 'row',

@@ -74,11 +74,8 @@ export default function TabNavigator() {
     }
   };
 
-  // Ensure floating tab bar is lifted cleanly above Android 3-button system nav or iOS Home indicator
-  const bottomBarOffset = Math.max(
-    (insets.bottom || 0) + (Platform.OS === 'ios' ? 12 : 20),
-    Platform.OS === 'ios' ? 24 : 22
-  );
+  // Ensure floating tab bar sits cleanly above Android system nav bar or iOS Home indicator
+  const bottomBarOffset = (insets.bottom || 0) + (Platform.OS === 'ios' ? 8 : 6);
 
   return (
     <View style={styles.container}>

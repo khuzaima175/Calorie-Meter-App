@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNutritionStore } from '../stores/useNutritionStore';
@@ -46,6 +46,7 @@ const MEAL_TYPES = [
 ];
 
 export default function LogMealScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const addMeal = useNutritionStore((s) => s.addMeal);
 
   const [activeTab, setActiveTab] = useState('photo');
@@ -209,7 +210,7 @@ export default function LogMealScreen({ navigation }) {
     >
       <View style={[styles.container, isCameraMode && styles.cameraContainer]}>
         {/* Top Header & Tab Pills Navigation */}
-        <View style={isCameraMode ? styles.floatingHeaderWrapper : styles.headerWrapper}>
+        <View style={isCameraMode ? [styles.floatingHeaderWrapper, { top: insets.top + 8 }] : styles.headerWrapper}>
           {!isCameraMode && (
             <View style={styles.header}>
               <Text style={styles.titleText}>
@@ -294,6 +295,7 @@ export default function LogMealScreen({ navigation }) {
                 setAnalysisResult(null);
                 setCapturedImageUri(null);
               }}
+              onSwitchToText={() => handleTabChange('text')}
             />
           </View>
         ) : (
