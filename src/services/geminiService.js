@@ -1,8 +1,8 @@
 import { useProfileStore } from '../stores/useProfileStore';
 
-// Ultra-fast multimodal vision & reasoning models (sub-2-second inference)
-const PRIMARY_MODEL = 'gemini-2.5-flash';
-const FALLBACK_MODEL = 'gemini-1.5-flash';
+// Models: 3.7 Flash as Primary, 3.5 Flash-Lite as Secondary & Chat
+const PRIMARY_MODEL = 'gemini-3.7-flash';
+const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
 
 /**
  * Returns current real-time meal period for Pakistani / local daily routine
