@@ -75,16 +75,25 @@ export default function TabNavigator() {
     }
   };
 
-  // Ensure floating tab bar sits cleanly above Android system nav bar or iOS Home indicator
-  const bottomBarOffset = (insets.bottom || 0) + 8;
+  // Ensure bottom tab bar derives height and padding directly from insets.bottom
+  const bottomPad = Math.max(insets.bottom, 8);
+  const tabBarHeight = 56 + bottomPad;
 
   return (
     <View style={styles.container}>
       {/* Active Screen View */}
       <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
 
-      {/* Floating Bottom Tab Bar */}
-      <View style={[styles.tabBar, { bottom: bottomBarOffset }]}>
+      {/* Docked Bottom Tab Bar matching Mobile Voice Recorder architecture */}
+      <View
+        style={[
+          styles.tabBar,
+          {
+            paddingBottom: bottomPad,
+            height: tabBarHeight,
+          },
+        ]}
+      >
         {TABS.map((tab) => {
           const isActive = activeRoute === tab.key;
 
@@ -141,19 +150,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabBar: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    height: 64,
     backgroundColor: colors.cardBackground,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingHorizontal: 8,
-    ...shadows.floating,
   },
   tabItem: {
     alignItems: 'center',
@@ -179,7 +182,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.sageBright,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -24,
+    marginTop: -22,
     ...shadows.card,
     borderWidth: 3,
     borderColor: colors.background,

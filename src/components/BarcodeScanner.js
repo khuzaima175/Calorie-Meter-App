@@ -136,13 +136,8 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
           </View>
         </View>
 
-        {/* Bottom Manual Entry Drawer / Toggle: clears floating tab bar */}
-        <View
-          style={[
-            styles.bottomControlsRow,
-            { bottom: insets.bottom + 96 },
-          ]}
-        >
+        {/* Bottom Manual Entry Drawer / Toggle */}
+        <View style={[styles.bottomControlsRow, { bottom: 20 }]}>
           {showManualInput ? (
             <View style={styles.manualBox}>
               <View style={styles.manualHeader}>

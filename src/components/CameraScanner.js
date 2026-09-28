@@ -176,13 +176,8 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
           </View>
         </View>
 
-        {/* Bottom Shutter Row: clears the floating tab bar on all devices */}
-        <View
-          style={[
-            styles.bottomControlsRow,
-            { bottom: insets.bottom + 96 },
-          ]}
-        >
+        {/* Bottom Shutter Row */}
+        <View style={[styles.bottomControlsRow, { bottom: 20 }]}>
           {/* Gallery Picker */}
           <TouchableOpacity
             style={styles.actionBtn}

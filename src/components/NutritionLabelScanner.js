@@ -174,13 +174,8 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
           </View>
         </View>
 
-        {/* Bottom Controls Row: clears floating tab bar */}
-        <View
-          style={[
-            styles.bottomControlsRow,
-            { bottom: insets.bottom + 96 },
-          ]}
-        >
+        {/* Bottom Controls Row */}
+        <View style={[styles.bottomControlsRow, { bottom: 20 }]}>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={handlePickFromGallery}

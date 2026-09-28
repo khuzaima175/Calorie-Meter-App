@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { initDatabase, getTodayString } from './services/databaseService';
 import { useProfileStore } from './stores/useProfileStore';
 import { useNutritionStore } from './stores/useNutritionStore';
@@ -63,7 +63,7 @@ function AppBootstrapper() {
   if (!isReady) {
     return (
       <View style={styles.bootContainer}>
-        <StatusBar style="light" />
+        <StatusBar style="light" backgroundColor="transparent" translucent />
         <LoadingShimmer />
       </View>
     );
@@ -71,7 +71,7 @@ function AppBootstrapper() {
 
   return (
     <View style={styles.appContainer}>
-      <StatusBar style="light" />
+      <StatusBar style="light" backgroundColor="transparent" translucent />
       <View style={styles.mobileShell}>
         <TabNavigator />
       </View>
@@ -81,7 +81,7 @@ function AppBootstrapper() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AppBootstrapper />
     </SafeAreaProvider>
   );
