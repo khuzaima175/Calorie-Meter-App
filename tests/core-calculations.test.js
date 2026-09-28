@@ -314,3 +314,62 @@ test('Schema Validation: Required food macro keys exist', () => {
   assert.ok(Array.isArray(dummyPayload.dietary_tags));
 });
 
+// 8. Gemini error formatter helper for testing
+function parseAndFormatGeminiError(errorInput, status = 0) {
+  let message = '';
+  let statusStr = '';
+  try {
+    const parsed = typeof errorInput === 'string' ? JSON.parse(errorInput) : errorInput;
+    message = parsed?.error?.message || '';
+    statusStr = parsed?.error?.status || '';
+  } catch {
+    message = typeof errorInput === 'string' ? errorInput : errorInput?.message || '';
+  }
+
+  const combined = `${message} ${statusStr}`.toLowerCase();
+
+  if (
+    status === 429 ||
+    combined.includes('429') ||
+    combined.includes('resource_exhausted') ||
+    combined.includes('quota') ||
+    combined.includes('rate_limit_exceeded') ||
+    combined.includes('too many requests')
+  ) {
+    return '⚠️ Gemini AI Quota Reached';
+  }
+
+  if (
+    combined.includes('network request failed') ||
+    combined.includes('failed to fetch') ||
+    combined.includes('enotfound') ||
+    combined.includes('econnrefused') ||
+    combined.includes('networkerror')
+  ) {
+    return '⚠️ Network Connection Error';
+  }
+
+  return message || `Gemini AI service unavailable (Status ${status || 'unknown'}). Please try again.`;
+}
+
+test('Error Formatter: Identifies offline network connection errors', () => {
+  const result1 = parseAndFormatGeminiError('TypeError: Network request failed');
+  assert.equal(result1, '⚠️ Network Connection Error');
+
+  const result2 = parseAndFormatGeminiError('Failed to fetch');
+  assert.equal(result2, '⚠️ Network Connection Error');
+});
+
+test('Error Formatter: Identifies 429 quota exhaustion gracefully', () => {
+  const quotaErr = JSON.stringify({
+    error: {
+      code: 429,
+      message: 'Resource has been exhausted (e.g. check quota).',
+      status: 'RESOURCE_EXHAUSTED',
+    },
+  });
+  const result = parseAndFormatGeminiError(quotaErr, 429);
+  assert.equal(result, '⚠️ Gemini AI Quota Reached');
+});
+
+

@@ -190,7 +190,18 @@ export function parseAndFormatGeminiError(errorInput, status = 0) {
     );
   }
 
-  // 5. Return parsed message if available, else standard message
+  // 5. Network / Offline error
+  if (
+    combined.includes('network request failed') ||
+    combined.includes('failed to fetch') ||
+    combined.includes('enotfound') ||
+    combined.includes('econnrefused') ||
+    combined.includes('networkerror')
+  ) {
+    return '⚠️ Network Connection Error\n\nPlease check your internet connection and try again.';
+  }
+
+  // 6. Return parsed message if available, else standard message
   return message || `Gemini AI service unavailable (Status ${status || 'unknown'}). Please try again.`;
 }
 
@@ -356,6 +367,16 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
       throw error;
     }
 
+    // If network connection error, do not retry fallback
+    if (
+      error.message?.includes('Network Connection Error') ||
+      error.message?.includes('Network request failed') ||
+      error.message?.includes('Failed to fetch') ||
+      error.message?.includes('network')
+    ) {
+      throw new Error('⚠️ Network Connection Error\n\nPlease check your internet connection and try again.');
+    }
+
     if (model === PRIMARY_MODEL) {
       return await callGemini(contents, systemInstruction, FALLBACK_MODEL, options);
     }
@@ -499,8 +520,15 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
     responseSchema: FOOD_ANALYSIS_SCHEMA,
   });
   try {
-    return JSON.parse(cleanJsonText(rawOutput));
+    const parsed = JSON.parse(cleanJsonText(rawOutput));
+    if (parsed.is_no_food) {
+      throw new Error('No food detected in photo. Please ensure food or a meal is clearly visible.');
+    }
+    return parsed;
   } catch (err) {
+    if (err.message && err.message.includes('No food detected')) {
+      throw err;
+    }
     console.error('Failed to parse Gemini photo response:', rawOutput);
     throw new Error('AI was unable to parse the food structure. Please try another angle or enter details.');
   }
@@ -577,6 +605,14 @@ Accurate Desi Nutritional Guidelines:
 - 1 cup Doodh Patti Chai = 120-150 kcal (4g protein, 14g carbs, 6g fat)
 - 1 plate Nihari = 550-650 kcal (45g protein, 15g carbs, 35g fat)
 - If user mentions percentage or portion (e.g. "ate 40%", "half plate"), scale calories and macros to that exact fraction.
+- Non-Food / Gibberish Detection:
+  If the input is NOT a recognizable food, dish, ingredient, meal, or beverage (e.g. random letters, typos/gibberish like "asdfgh", "xyzabc123", non-edible objects like "laptop", "shoe"), you MUST set:
+  "is_no_food": true,
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0,
+  "name": "Not a recognizable food"
 
 Return ONLY a valid JSON object:
 {
@@ -594,7 +630,8 @@ Return ONLY a valid JSON object:
   "confidence": 0.95,
   "ingredients": ["2 Whole Wheat Rotis", "Daal Mash", "Kachumber Salad"],
   "dietary_tags": ["High Fiber", "Pakistani Staple"],
-  "health_tips": "Balanced protein and complex carbohydrates."
+  "health_tips": "Balanced protein and complex carbohydrates.",
+  "is_no_food": false
 }`;
 
   const promptText = `Current local time: ${currentPeriod.timeStr} (${currentPeriod.label}). Estimate the full nutritional breakdown for: "${textInput}". Default meal_type to ${currentPeriod.mealType} unless description indicates otherwise.`;
@@ -617,11 +654,20 @@ Return ONLY a valid JSON object:
   try {
     const cleaned = cleanJsonText(rawOutput);
     const parsed = JSON.parse(cleaned);
+    if (
+      parsed.is_no_food ||
+      (parsed.calories === 0 && (!parsed.name || parsed.name.toLowerCase().includes('not food') || parsed.name.toLowerCase().includes('not a recognizable')))
+    ) {
+      throw new Error('Not a recognizable food item. Please describe a valid meal or food name.');
+    }
     if (Array.isArray(parsed.health_tips)) {
       parsed.health_tips = parsed.health_tips.join(' ');
     }
     return parsed;
   } catch (err) {
+    if (err.message && err.message.includes('Not a recognizable food')) {
+      throw err;
+    }
     console.error('Failed to parse Gemini text meal response:', rawOutput);
     throw new Error('Could not calculate nutrition for meal. Please check the food description and try again.');
   }
