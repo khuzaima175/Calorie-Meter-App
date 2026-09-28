@@ -25,7 +25,7 @@ export default function TabNavigator() {
   const [activeRoute, setActiveRoute] = useState('Dashboard');
   const centerBtnScale = useRef(new Animated.Value(1)).current;
   const insets = useSafeAreaInsets();
-  console.log('BUNDLE v3 insets:', insets);
+  console.log('[INSETS]', JSON.stringify(insets));
 
   const handleTabPress = (routeKey) => {
     Haptics.impactAsync(

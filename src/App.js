@@ -97,7 +97,9 @@ const styles = StyleSheet.create({
   appContainer: {
     flex: 1,
     backgroundColor: '#09090B',
-    ...(Platform.OS === 'web' && { alignItems: 'center', justifyContent: 'center' }),
+    ...(Platform.OS === 'web'
+      ? { alignItems: 'center', justifyContent: 'center' }
+      : { alignItems: 'stretch' }),
   },
   mobileShell: {
     flex: 1,

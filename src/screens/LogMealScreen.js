@@ -208,7 +208,10 @@ export default function LogMealScreen({ navigation }) {
   // ==========================================
   if (isCameraMode) {
     return (
-      <View style={styles.cameraFullScreenContainer}>
+      <View
+        style={styles.cameraFullScreenContainer}
+        onLayout={(e) => console.log('[LAYOUT] cameraFullScreen', JSON.stringify(e.nativeEvent.layout))}
+      >
         {/* 1. Full Screen Camera Viewport (100% Dimensions) */}
         {activeTab === 'photo' && (
           <CameraScanner

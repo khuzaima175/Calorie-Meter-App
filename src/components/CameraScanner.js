@@ -24,44 +24,6 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const [facing, setFacing] = useState('back');
   const cameraRef = useRef(null);
 
-  if (!permission) {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={colors.sageBright} />
-        <Text style={styles.loadingText}>Initializing camera...</Text>
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={[styles.permissionWrapper, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }]}>
-        <View style={styles.permissionCard}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="camera" size={36} color={colors.sageBright} />
-          </View>
-          <Text style={styles.permTitle}>Camera Access Needed</Text>
-          <Text style={styles.permSubtitle}>
-            To recognize meals and analyze nutrition with AI, please enable camera access.
-          </Text>
-          <Button
-            title="Enable Camera"
-            onPress={requestPermission}
-            size="lg"
-            style={styles.permBtn}
-          />
-          <TouchableOpacity
-            style={styles.galleryFallbackBtn}
-            onPress={() => handlePickFromGallery()}
-          >
-            <Ionicons name="images-outline" size={18} color={colors.textSecondary} />
-            <Text style={styles.galleryFallbackText}>Or choose from photo library</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   const handleTakePhoto = async () => {
     if (!cameraRef.current || isProcessing) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -113,8 +75,49 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
+  if (!permission) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.sageBright} />
+        <Text style={styles.loadingText}>Initializing camera...</Text>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={[styles.permissionWrapper, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }]}>
+        <View style={styles.permissionCard}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="camera" size={36} color={colors.sageBright} />
+          </View>
+          <Text style={styles.permTitle}>Camera Access Needed</Text>
+          <Text style={styles.permSubtitle}>
+            To recognize meals and analyze nutrition with AI, please enable camera access.
+          </Text>
+          <Button
+            title="Enable Camera"
+            onPress={requestPermission}
+            size="lg"
+            style={styles.permBtn}
+          />
+          <TouchableOpacity
+            style={styles.galleryFallbackBtn}
+            onPress={handlePickFromGallery}
+          >
+            <Ionicons name="images-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.galleryFallbackText}>Or choose from photo library</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={(e) => console.log('[LAYOUT] scannerContainer', JSON.stringify(e.nativeEvent.layout))}
+    >
       {/* 1. Live Native Camera View */}
       {permission.granted && (
         <CameraView

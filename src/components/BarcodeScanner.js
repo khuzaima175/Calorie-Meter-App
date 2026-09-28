@@ -25,6 +25,22 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
   const [showManualInput, setShowManualInput] = useState(false);
   const [scanned, setScanned] = useState(false);
 
+  const handleBarcodeScanned = ({ data }) => {
+    if (scanned || isProcessing || !data) return;
+    setScanned(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    onScanBarcode(data);
+
+    // Re-enable scanning after 3 seconds in case user wants to scan again
+    setTimeout(() => setScanned(false), 3000);
+  };
+
+  const handleManualSubmit = () => {
+    if (!manualCode.trim()) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    onScanBarcode(manualCode.trim());
+  };
+
   if (!permission) {
     return (
       <View style={styles.centerContainer}>
@@ -56,24 +72,11 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
     );
   }
 
-  const handleBarcodeScanned = ({ data }) => {
-    if (scanned || isProcessing || !data) return;
-    setScanned(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    onScanBarcode(data);
-
-    // Re-enable scanning after 3 seconds in case user wants to scan again
-    setTimeout(() => setScanned(false), 3000);
-  };
-
-  const handleManualSubmit = () => {
-    if (!manualCode.trim()) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    onScanBarcode(manualCode.trim());
-  };
-
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={(e) => console.log('[LAYOUT] barcodeScannerContainer', JSON.stringify(e.nativeEvent.layout))}
+    >
       {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
