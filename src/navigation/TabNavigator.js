@@ -1,8 +1,8 @@
 // src/navigation/TabNavigator.js
 // Custom sleek bottom tab navigator with center action button and safe area insets for Android & iOS
 
-import React, { useState, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -23,8 +23,22 @@ const TABS = [
 
 export default function TabNavigator() {
   const [activeRoute, setActiveRoute] = useState('Dashboard');
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const centerBtnScale = useRef(new Animated.Value(1)).current;
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleTabPress = (routeKey) => {
     Haptics.impactAsync(
@@ -77,7 +91,7 @@ export default function TabNavigator() {
   // Ensure bottom tab bar derives height and padding directly from insets.bottom
   const bottomPad = Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPad;
-  const hideTabBar = activeRoute === 'LogMeal';
+  const hideTabBar = activeRoute === 'LogMeal' || isKeyboardVisible;
 
   return (
     <View style={styles.container}>

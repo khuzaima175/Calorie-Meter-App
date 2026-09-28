@@ -10,6 +10,9 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Keyboard,
+  UIManager,
+  LayoutAnimation,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +23,10 @@ import { useProfileStore } from '../stores/useProfileStore';
 import AIChatBubble from '../components/AIChatBubble';
 import MealPlanCard from '../components/MealPlanCard';
 import { colors, radius, typography } from '../theme/colors';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function AssistantScreen() {
   const messages = useAIStore((s) => s.messages);
@@ -40,6 +47,30 @@ export default function AssistantScreen() {
   const [inputMessage, setInputMessage] = useState('');
   const scrollViewRef = useRef(null);
   const isUserNearBottom = useRef(true);
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      }
+      setTimeout(() => scrollToBottom(true), 100);
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      }
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleScroll = (event) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
@@ -109,10 +140,11 @@ export default function AssistantScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -198,6 +230,8 @@ export default function AssistantScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         >
           {messages.map((msg) => (
             <AIChatBubble
@@ -245,6 +279,9 @@ export default function AssistantScreen() {
               multiline
               maxLength={500}
               accessibilityLabel="Chat message for Sage AI"
+              onFocus={() => {
+                setTimeout(() => scrollToBottom(true), 150);
+              }}
             />
 
             <TouchableOpacity

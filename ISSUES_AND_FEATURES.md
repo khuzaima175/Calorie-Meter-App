@@ -265,6 +265,24 @@ A comprehensive, historical engineering log of all bugs encountered during devel
 
 ---
 
+### 24. Keyboard Covering AI Chat Input Box on Android (Soft Keyboard Occlusion)
+- **Severity**: 🔴 Critical
+- **Symptoms**: Tapping the text input in the Sage AI chat tab (`AssistantScreen`) caused the Android soft keyboard to slide directly over the input box without pushing the UI upward, preventing users from seeing what they were typing.
+- **Root Cause**: 
+  1. `KeyboardAvoidingView` was configured with `behavior={Platform.OS === 'ios' ? 'padding' : undefined}`. On Android, `behavior` evaluated to `undefined`, which internally causes React Native's `KeyboardAvoidingView` to render a plain, inactive `<View>` with zero padding or height adjustment.
+  2. The custom bottom tab bar remained docked and visible when the keyboard was open, conflicting with viewport height calculations.
+  3. `SafeAreaView` from `react-native-safe-area-context` clamped bottom safe insets across the entire screen.
+- **Exact Code Solution**:
+  1. Updated `behavior` in [`src/screens/AssistantScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/AssistantScreen.js) to `{Platform.OS === 'ios' ? 'padding' : 'height'}`.
+  2. Enabled `UIManager.setLayoutAnimationEnabledExperimental(true)` and added a `Keyboard.addListener` subscription triggering `LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)` and auto-scrolling to the latest message on keyboard appearance.
+  3. Configured `<SafeAreaView edges={['top', 'left', 'right']}>` so the bottom is unconstrained.
+  4. Added `keyboardShouldPersistTaps="handled"` and `keyboardDismissMode` to the messages `ScrollView`, and an `onFocus` scroll trigger to the `TextInput`.
+  5. Updated [`src/navigation/TabNavigator.js`](file:///g:/Important%20Projects/calorie%20meter/src/navigation/TabNavigator.js) to automatically hide the bottom tab bar when `isKeyboardVisible` is true (`tabBarHideOnKeyboard` pattern).
+  6. Configured `"softwareKeyboardLayoutMode": "pan"` in [`app.json`](file:///g:/Important%20Projects/calorie%20meter/app.json).
+- **Verification**: Verified on Android; input box smoothly animates upward directly above the keyboard with full message visibility and fluid scroll-to-dismiss behavior.
+
+---
+
 ## 🚀 Feature Status & Production Matrix
 
 | Feature Module | Capabilities | Status | Test Coverage |

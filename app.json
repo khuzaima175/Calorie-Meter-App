@@ -33,7 +33,8 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.tysom41.caloriemeterapp",
-      "versionCode": 2
+      "versionCode": 2,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png",
