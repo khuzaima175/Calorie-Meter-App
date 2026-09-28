@@ -1,82 +1,118 @@
-# CalorieSnap Pro — Architecture & Technical Design
+# CalorieSnap Pro — System Architecture & Technical Design
 
-Comprehensive technical architecture documentation for **CalorieSnap Pro**, an offline-first nutrition, hydration, and workout tracking mobile application built on Expo SDK 57, React Native 0.86, SQLite, and Google Gemini 3.5.
+Comprehensive technical architecture documentation for **CalorieSnap Pro**, an offline-first nutrition, hydration, and workout tracking mobile application built on Expo SDK 57, React Native 0.86, SQLite, and Google Gemini 3.5 Flash-Lite.
 
 ---
 
 ## 1. System Overview & Architecture Topology
 
+CalorieSnap Pro is designed around an **offline-first, layered architecture** where all core logging, calculation, and retrieval operations occur locally without cloud round-trips. External network calls are isolated to AI multimodal analysis and barcode queries.
+
 ```mermaid
 graph TD
-    A[Mobile / Web Client Layer] --> B[Navigation & Safe-Area Shell]
-    B --> C[Zustand State Stores]
-    
-    subgraph State Management
-        C1[useNutritionStore]
-        C2[useProfileStore]
-        C3[useAIStore]
+    subgraph Presentation & UI Layer
+        A1[Dashboard Screen]
+        A2[Log Meal Screen]
+        A3[Activity Screen]
+        A4[Assistant Screen]
+        A5[Settings Screen]
+        A6[TabNavigator & Safe-Area Shell]
+        A7[ErrorBoundary & OfflineBanner]
     end
-    C --> C1
-    C --> C2
-    C --> C3
+
+    subgraph State Management Layer (Zustand)
+        B1[useNutritionStore<br/>Meals, Water, Workouts, Date]
+        B2[useProfileStore<br/>Metrics, Goals, BMR/TDEE]
+        B3[useAIStore<br/>Chat History, Reviews, Plans]
+    end
 
     subgraph Service & Persistence Layer
-        D1[databaseService<br/>SQLite / Web Store]
-        D2[imageService<br/>FileSystem / IndexedDB]
-        D3[geminiService<br/>Gemini 3.5 Flash-Lite]
-        D4[barcodeService<br/>OpenFoodFacts API]
+        C1[databaseService<br/>SQLite Native / Web Store]
+        C2[imageService<br/>Permanent FileSystem / IndexedDB]
+        C3[geminiService<br/>Gemini 3.5 Flash-Lite API]
+        C4[barcodeService<br/>OpenFoodFacts Client]
+        C5[notificationService<br/>expo-notifications Scheduler]
     end
 
-    C1 <--> D1
-    C2 <--> D1
-    C1 <--> D2
-    C3 <--> D3
-    C1 <--> D4
-
-    subgraph External Services & Hardware
-        E1[Native Camera / CameraView]
-        E2[Google Gemini REST API]
-        E3[OpenFoodFacts REST API]
-        E4[Local Filesystem / Device Storage]
+    subgraph Hardware & Operating System
+        D1[Native Camera / CameraView]
+        D2[Local FileSystem Document Storage]
+        D3[Local SQLite Engine (WAL Mode)]
+        D4[Local Push Notification Center]
     end
 
-    D2 <--> E4
-    D3 <--> E2
-    D4 <--> E3
-    A <--> E1
+    subgraph Remote Cloud APIs
+        E1[Google Gemini REST API v1beta]
+        E2[OpenFoodFacts REST API v0]
+    end
+
+    A1 & A2 & A3 & A4 & A5 --> A6
+    A6 --> B1 & B2 & B3
+    A7 -.-> A6
+
+    B1 <--> C1
+    B2 <--> C1
+    B1 <--> C2
+    B3 <--> C3
+    B1 <--> C4
+    A5 <--> C5
+
+    C1 <--> D3
+    C2 <--> D2
+    C3 <--> E1
+    C4 <--> E2
+    C5 <--> D4
+    A2 <--> D1
 ```
 
 ---
 
 ## 2. Core Architectural Principles
 
-1. **Offline-First & Local Sovereignty**:
-   - All user data (daily meal logs, workouts, hydration records, profile metrics, and custom goals) is stored locally on-device.
-   - On Native (Android / iOS), data is managed through an ACID-compliant SQLite relational database (`expo-sqlite`).
-   - On Web, data persists across sessions using structured `localStorage` with `IndexedDB` for high-resolution image binaries.
+1. **Local Sovereignty & Offline-First Persistence**:
+   - Every meal, workout, hydration entry, and user target is committed directly to an ACID-compliant local **SQLite** database on the device.
+   - The application functions seamlessly without an active internet connection. Network access is utilized exclusively for optional multimodal AI features and barcode product searches.
 
-2. **Sub-Second AI Vision & Multimodal Inference**:
-   - Primary AI model: **`gemini-3.5-flash-lite`** (sub-second latency ~900ms–1100ms).
-   - Fallback AI model: **`gemini-flash-lite-latest`** for automatic failover on 404 or transient quota spikes.
+2. **Sub-Second Multimodal AI Vision**:
+   - Primary AI model: **`gemini-3.5-flash-lite`** (~1,100ms average round-trip latency).
+   - Secondary fallback model: **`gemini-flash-lite-latest`** (automatic fallback on model unavailability or transient quota spikes).
    - Strict JSON structured output mode enforced via `responseMimeType: 'application/json'` and `generationConfig.responseSchema`.
 
-3. **Persistent Media & Cache Purge Protection**:
-   - Camera and gallery pickers return transient operating-system cache URIs that mobile OSes purge periodically.
-   - `imageService` copies temporary image files into permanent application storage (`FileSystem.documentDirectory + 'meals/'`) or browser IndexedDB before storing references in SQLite.
+3. **Permanent Media & Cache Purge Protection**:
+   - Operating system camera and image picker utilities output files to temporary cache directories that mobile OSes purge under storage pressure.
+   - `imageService` copies temporary image files into permanent application storage (`FileSystem.documentDirectory + 'meals/'`) or browser `IndexedDB` before writing references to SQLite.
 
-4. **Guaranteed State Consistency & Race Condition Mitigation**:
-   - Double-tap locks (`isSaving` state with `try / catch / finally` guarantees).
-   - Monotonic request counters (`barcodeReqIdRef`) to drop stale, out-of-order network lookups.
-   - Strict boundary validations ($1 \le \text{calories} \le 10,000$, $0 \le \text{macros} \le 1,000$, $1 \le \text{duration} \le 720\text{ mins}$).
+4. **Guaranteed State Consistency & Concurrency Protection**:
+   - **Double-Tap Locks**: Action buttons enforce `isSaving` state locks with strict `try / catch / finally` execution guarantees.
+   - **Monotonic Request Ordering**: Barcode queries utilize a monotonic request ID counter (`barcodeReqIdRef`) to discard out-of-order responses from slow network connections.
+   - **Boundary Validation**: Numerical inputs enforce strict clinical boundaries ($1 \le \text{calories} \le 10,000$, $0 \le \text{macros} \le 1,000$, $1 \le \text{duration} \le 720\text{ mins}$).
+
+5. **Universal WCAG AA Accessibility (A11y)**:
+   - Full accessibility props (`accessibilityRole`, `accessibilityLabel`, `accessibilityHint`, `accessibilityState`) across all buttons, tabs, chips, modals, inputs, and charts.
 
 ---
 
-## 3. Storage & Database Schema Architecture
+## 3. Presentation Layer & Viewport Architecture
 
-### SQLite Tables (`caloriesnap.db`)
+### Safe-Area & Viewport Management
+- Root layout is wrapped in `SafeAreaProvider` with `initialWindowMetrics`.
+- Top and bottom system bar insets are managed via `useSafeAreaInsets` to ensure floating headers and bottom navigation clear notches, dynamic islands, and home indicator bars.
+
+### Android SurfaceView Hardware Layering
+In Android's graphics pipeline, React Native's `CameraView` uses a native `SurfaceView`/`TextureView` that renders on a dedicated hardware layer behind the application view tree:
+- If parent containers have opaque background colors (e.g., `#000000` or `#121214`), React Native's Android `ViewGroup` renders an opaque box over the hardware surface hole, obscuring the camera everywhere except behind the translucent system status bar.
+- **Architectural Solution**: Container wrappers in [`LogMealScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/LogMealScreen.js) and [`CameraScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/CameraScanner.js) enforce `backgroundColor: 'transparent'` and `...StyleSheet.absoluteFillObject` coordinates, allowing the camera hardware surface to render full-bleed across 100% of the screen.
+
+---
+
+## 4. Storage & Database Schema Architecture
+
+### SQLite Relational Database (`caloriesnap.db`)
+
+On native platforms (iOS/Android), the database runs SQLite 3 with Write-Ahead Logging (`PRAGMA journal_mode = WAL;`) and foreign key constraints enabled.
 
 ```sql
--- 1. Meals Table (Food intake, macros, and photo references)
+-- 1. Meals Table (Food intake, macronutrients, and media references)
 CREATE TABLE IF NOT EXISTS meals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   date TEXT NOT NULL,                  -- Format: YYYY-MM-DD
@@ -91,7 +127,7 @@ CREATE TABLE IF NOT EXISTS meals (
   sugar REAL NOT NULL DEFAULT 0,
   sodium REAL NOT NULL DEFAULT 0,
   portion TEXT DEFAULT '1 serving',
-  image_uri TEXT                       -- Permanent local document path or IndexedDB key
+  image_uri TEXT                       -- Permanent local file path or IndexedDB key
 );
 
 -- 2. Exercises Table (Physical workouts and active burn)
@@ -114,7 +150,7 @@ CREATE TABLE IF NOT EXISTS water_intake (
   amount_ml REAL NOT NULL
 );
 
--- 4. Nutritional & Activity Goals Singleton (id = 1)
+-- 4. Goals Singleton Table (id = 1)
 CREATE TABLE IF NOT EXISTS goals (
   id INTEGER PRIMARY KEY DEFAULT 1,
   calories REAL NOT NULL DEFAULT 2000,
@@ -125,7 +161,7 @@ CREATE TABLE IF NOT EXISTS goals (
   exercise_minutes REAL NOT NULL DEFAULT 30
 );
 
--- 5. User Profile Singleton (id = 1)
+-- 5. Profile Singleton Table (id = 1)
 CREATE TABLE IF NOT EXISTS profile (
   id INTEGER PRIMARY KEY DEFAULT 1,
   name TEXT DEFAULT 'Explorer',
@@ -135,85 +171,178 @@ CREATE TABLE IF NOT EXISTS profile (
   height_cm REAL DEFAULT 178,
   activity_level TEXT DEFAULT 'moderate',
   goal_type TEXT DEFAULT 'lose_weight',
-  custom_api_key TEXT DEFAULT ''       -- Encrypted/local override for Gemini API
+  custom_api_key TEXT DEFAULT ''       -- Optional user-configured Gemini API key
 );
 
--- Indices for instant date-partitioned range queries
+-- Date-Partitioned Performance Indices
 CREATE INDEX IF NOT EXISTS idx_meals_date ON meals(date);
 CREATE INDEX IF NOT EXISTS idx_exercises_date ON exercises(date);
 CREATE INDEX IF NOT EXISTS idx_water_date ON water_intake(date);
 ```
 
-### Web Storage Fallback Engine
-When executed in a web browser (`Platform.OS === 'web'`), the database abstraction dynamically switches to a `localStorage` JSON store (`CALORIESNAP_WEB_STORE_V2`) for relational tables and `IndexedDB` (`CalorieSnapImagesDB`) for raw photo blobs, completely avoiding the 5MB browser `localStorage` quota limit.
+### Schema Migration Engine
+The database uses `PRAGMA user_version` to handle schema migrations progressively without data loss:
+- **Version 1**: Initial baseline tables (`meals`, `exercises`, `water_intake`, `goals`, `profile`).
+- **Version 2**: Added micronutrient columns (`fiber`, `sugar`, `sodium`) to `meals` and `custom_api_key` to `profile`.
+
+### Dual-Engine Web Storage Architecture
+When executed in a web browser (`Platform.OS === 'web'`):
+1. **Metadata & Relational Records**: Serialized to browser `localStorage` under `CALORIESNAP_WEB_STORE_V2`. Large base64 strings are stripped to prevent exceeding the browser's 5MB `localStorage` limit.
+2. **Binary Image Storage**: Stored in browser **IndexedDB** (`CalorieSnapImagesDB`) with a 10MB quota safety guard.
 
 ---
 
-## 4. State Management (Zustand Stores)
+## 5. State Management Architecture (Zustand)
 
-| Store | Key Responsibilities | Primary Actions |
-|---|---|---|
-| [`useNutritionStore`](file:///g:/Important%20Projects/calorie%20meter/src/stores/useNutritionStore.js) | Selected date, daily totals, logged meals, exercises, water intake | `setSelectedDate()`, `refreshData()`, `addMeal()`, `editMeal()`, `removeMeal()`, `logWater()`, `undoWater()`, `addExercise()` |
-| [`useProfileStore`](file:///g:/Important%20Projects/calorie%20meter/src/stores/useProfileStore.js) | Physical metrics, Mifflin-St Jeor BMR/TDEE calculation, custom targets | `loadProfile()`, `saveProfile()`, `saveGoals()`, `calculateMetabolism()` |
-| [`useAIStore`](file:///g:/Important%20Projects/calorie%20meter/src/stores/useAIStore.js) | Nutritionist chat, streaming responses, meal plans, daily reviews | `sendUserMessage()`, `requestDailyReview()`, `requestMealPlan()`, `clearChat()` |
-
----
-
-## 5. AI Vision & Chat Engine (`geminiService.js`)
-
-### Multimodal Pipeline
 ```
-[User Camera / Input] 
-       │
-       ▼
-[Image Compression: JPEG 0.45, max 1024px] ──► [cleanBase64 Stripper]
-       │
-       ▼
-[Context Injection: Local Time, Meal Period, User Notes, Goals]
-       │
-       ▼
-[RateLimiter: 60 RPM Custom / 15 RPM Shared]
-       │
-       ▼
-[Gemini 3.5 Flash-Lite Request with responseSchema]
-       ├── (200 OK) ──► [JSON Parse] ──► [UI Review Card]
-       └── (404/400) ──► [Auto-Fallback: gemini-flash-lite-latest] ──► [UI]
+┌────────────────────────────────────────────────────────────────────────┐
+│                          useNutritionStore                             │
+│  State: selectedDate, meals[], exercises[], waterIntake[], dailyTotals │
+│  Actions: setSelectedDate, addMeal, editMeal, removeMeal,              │
+│           logWater, undoWater, addExercise, removeExercise             │
+└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                           useProfileStore                              │
+│  State: profile, goals, calculatedBmr, calculatedTdee                  │
+│  Actions: loadProfile, saveProfile, saveGoals, calculateMetabolism     │
+└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                              useAIStore                                │
+│  State: messages[], isGenerating, error, lastReview, mealPlan          │
+│  Actions: sendUserMessage, requestDailyReview, requestMealPlan,        │
+│           clearChat                                                    │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Token Budget & History Sanitization
-- Approximates token consumption using **~4 characters per token**.
-- `sanitizeChatHistory` enforces a strict **7,500 token ceiling**, preserving complete `[user -> model]` pairs and pruning leading orphaned assistant turns.
+---
+
+## 6. Multimodal Vision & Language AI Pipeline
+
+### Pipeline Data Flow
+
+```
+[User Camera / Gallery] 
+       │
+       ▼
+[Image Preprocessing: JPEG 0.45 Quality, max 1024px] 
+       │
+       ▼
+[cleanBase64 Stripper: Remove 'data:image/...;base64,' prefix]
+       │
+       ▼
+[Context Injection: Time of Day, Meal Period, User Portion Notes, Targets]
+       │
+       ▼
+[RateLimiter: 60 RPM (Custom Key) / 15 RPM (Shared Key)]
+       │
+       ▼
+[Primary Model: gemini-3.5-flash-lite with responseSchema]
+       ├── (200 OK) ────────► [JSON Validator & Parser] ──► [UI Confirmation]
+       └── (404/503/Error) ──► [Fallback: gemini-flash-lite-latest] ──► [UI]
+```
+
+### Structured Output Schemas
+
+Gemini REST API calls enforce strict schema adherence via `generationConfig.responseSchema`:
+
+```javascript
+export const FOOD_ANALYSIS_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    name: { type: 'STRING' },
+    meal_type: { type: 'STRING' },
+    portion: { type: 'STRING' },
+    calories: { type: 'NUMBER' },
+    protein: { type: 'NUMBER' },
+    carbs: { type: 'NUMBER' },
+    fat: { type: 'NUMBER' },
+    fiber: { type: 'NUMBER' },
+    sugar: { type: 'NUMBER' },
+    sodium: { type: 'NUMBER' },
+    confidence: { type: 'NUMBER' },
+  },
+  required: ['name', 'meal_type', 'portion', 'calories', 'protein', 'carbs', 'fat'],
+};
+```
+
+### Chat History Sanitization & Token Budgeting
+To prevent HTTP 400 `INVALID_ARGUMENT` context overflows during long chat sessions:
+1. `estimateTokens(str)` approximates tokens at **~4 characters per token**.
+2. `sanitizeChatHistory(history, newTurnText, maxTokenBudget = 7500)`:
+   - Iterates backwards from the most recent turn.
+   - Preserves complete `[user -> model]` conversational pairs.
+   - Prunes leading orphaned model turns.
+   - Enforces strict role alternation.
 
 ---
 
-## 6. Mathematical Formulas & Business Logic
+## 7. Mathematical Formulations & Algorithms
 
-### Mifflin-St Jeor BMR Formula
+### 1. Mifflin-St Jeor BMR Equation
 $$\text{BMR}_{\text{male}} = 10 \times \text{weight (kg)} + 6.25 \times \text{height (cm)} - 5 \times \text{age (yrs)} + 5$$
 $$\text{BMR}_{\text{female}} = 10 \times \text{weight (kg)} + 6.25 \times \text{height (cm)} - 5 \times \text{age (yrs)} - 161$$
 
-### Total Daily Energy Expenditure (TDEE)
+### 2. Total Daily Energy Expenditure (TDEE)
 $$\text{TDEE} = \text{BMR} \times \text{Activity Multiplier}$$
-- Sedentary: $1.20$
-- Lightly Active: $1.375$
-- Moderately Active: $1.55$
-- Very Active: $1.725$
-- Extremely Active: $1.90$
 
-### Exercise Calorie Burn (MET Formula)
+| Activity Level | Multiplier | Description |
+|---|---|---|
+| **Sedentary** | `1.200` | Little or no exercise, desk job |
+| **Lightly Active** | `1.375` | Light exercise 1–3 days/week |
+| **Moderately Active** | `1.550` | Moderate exercise 3–5 days/week |
+| **Very Active** | `1.725` | Heavy exercise 6–7 days/week |
+| **Extremely Active** | `1.900` | Physical labor or intense athlete training |
+
+### 3. Goal Adjustment & Macronutrient Distribution
+
+| Goal Type | Calorie Adjustment | Protein Ratio | Carb Ratio | Fat Ratio |
+|---|---|---|---|---|
+| **Lose Weight** | $\text{TDEE} - 500\text{ kcal}$ | $30\%$ of kcal ($4\text{ kcal/g}$) | $40\%$ of kcal ($4\text{ kcal/g}$) | $30\%$ of kcal ($9\text{ kcal/g}$) |
+| **Maintain Weight**| $\text{TDEE} \pm 0\text{ kcal}$ | $25\%$ of kcal ($4\text{ kcal/g}$) | $50\%$ of kcal ($4\text{ kcal/g}$) | $25\%$ of kcal ($9\text{ kcal/g}$) |
+| **Build Muscle** | $\text{TDEE} + 350\text{ kcal}$ | $30\%$ of kcal ($4\text{ kcal/g}$) | $45\%$ of kcal ($4\text{ kcal/g}$) | $25\%$ of kcal ($9\text{ kcal/g}$) |
+
+### 4. Exercise Calorie Burn (MET Formula)
 $$\text{Calories Burned} = \left(\frac{\text{MET} \times 3.5 \times \text{Weight (kg)}}{200}\right) \times \text{Duration (mins)}$$
+
+### 5. Active Logging Streak Algorithm
+- Given a set of unique logged dates $\{D_1, D_2, \dots, D_n\}$:
+  - If $D_{\text{today}} \in \text{Dates}$, streak begins at $1$ and evaluates prior consecutive days $D_{\text{today}-1}, D_{\text{today}-2}, \dots$
+  - If $D_{\text{today}} \notin \text{Dates}$, but $D_{\text{yesterday}} \in \text{Dates}$, streak is preserved at $1 + \dots$ (grace period for current day).
+  - If neither today nor yesterday has entries, streak resets to $0$.
 
 ---
 
-## 7. Error Handling & Recovery Hierarchy
+## 8. Local Notification Engine (`notificationService.js`)
 
-1. **Root Error Boundary (`ErrorBoundary.js`)**:
-   - Catches render-phase and lifecycle exceptions across all components.
-   - Renders an informative recovery view with a "Reload Screen" action instead of white-screening.
+Uses `expo-notifications` for fully local, privacy-preserving notification scheduling without external push infrastructure:
 
-2. **Network Resilience & Offline Status (`OfflineBanner.js`)**:
-   - Continuously monitors online/offline status.
-   - Displays a non-intrusive status banner indicating SQLite local persistence.
+| Time | Title | Body |
+|---|---|---|
+| **08:30 AM** | 🌅 Breakfast Time! | Log your breakfast to kickstart your day and maintain your active streak. |
+| **01:15 PM** | 🥗 Lunch Photo Reminder | Snap a photo of your lunch for instant portion and macro analysis. |
+| **04:30 PM** | 💧 Hydration Check | Time for a glass of water (+250ml) to hit your daily hydration target. |
+| **07:45 PM** | 🌙 Dinner & Daily Review | Log your dinner and check your daily macro balance with Sage AI. |
 
-3. **API Rate Limiting & Error Parser (`parseAndFormatGeminiError`)**:
-   - Handles HTTP 429 (quota exhaustion), HTTP 400 (`INVALID_ARGUMENT` / schema violations), and HTTP 503 (server busy) with actionable, user-friendly instructions.
+---
+
+## 9. Error Handling & Recovery Architecture
+
+```
+┌───────────────────────────────────────────────────────────┐
+│                     ErrorBoundary.js                      │
+│  Catches render errors, component crashes, missing props. │
+│  Renders recovery screen with a "Reload Screen" action.   │
+└─────────────────────────────┬─────────────────────────────┘
+                              │
+┌─────────────────────────────▼─────────────────────────────┐
+│                     OfflineBanner.js                      │
+│  Monitors network status. Informs user that logging       │
+│  persists locally in SQLite while offline.                │
+└─────────────────────────────┬─────────────────────────────┘
+                              │
+┌─────────────────────────────▼─────────────────────────────┐
+│               parseAndFormatGeminiError.js                │
+│  Parses HTTP 400, 429, 503, and network errors into       │
+│  clear, actionable user feedback.                         │
+└───────────────────────────────────────────────────────────┘
+```
