@@ -71,6 +71,8 @@ export default function ExerciseCard({ exercise, onDelete }) {
             onPress={handleDelete}
             style={styles.deleteBtn}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${exercise.exercise_name}`}
           >
             <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
           </TouchableOpacity>

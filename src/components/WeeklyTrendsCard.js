@@ -90,6 +90,9 @@ export default function WeeklyTrendsCard({ selectedDate, targetCalories = 2000, 
                   if (onSelectDate) onSelectDate(dayItem.date);
                 }}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${dayLabel}, ${cal} calories logged`}
+                accessibilityState={{ selected: isSelected }}
               >
                 <View style={styles.barTrack}>
                   <View

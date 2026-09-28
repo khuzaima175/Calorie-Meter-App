@@ -120,6 +120,8 @@ A comprehensive record of all engineering issues, bugs encountered during develo
 | **Permanent Image Cache** | Native disk persistence + Web IndexedDB storage | ✅ Active |
 | **Data Backup / Restore** | Full JSON export and schema-validated backup restore | ✅ Active |
 | **Factory Reset** | Complete data wipe with double-confirmation modal | ✅ Active |
+| **Local Notifications** | Configurable daily reminders for breakfast, lunch, hydration, and evening review | ✅ Active |
+| **Accessibility (A11y)** | WCAG AA labels, roles, hints, and states on all interactive elements & buttons | ✅ Active |
 | **Offline Mode Banner** | Dynamic banner indicating local SQLite persistence | ✅ Active |
 | **Unit Test Suite** | 10 automated unit tests (`npm test`) covering math, formulas & sanitizers | ✅ Active |
 
@@ -127,9 +129,8 @@ A comprehensive record of all engineering issues, bugs encountered during develo
 
 ### ⏳ Upcoming Feature Roadmap
 
-- [ ] **Local Push Notifications**: Scheduled reminders for breakfast, lunch, dinner, and hydration via `expo-notifications`.
-- [ ] **Accessibility (A11y) Polish**: `accessibilityLabel` auditing on all icon buttons and Dynamic Type font scaling.
 - [ ] **Biometric Lock**: Optional Face ID / Fingerprint app lock via `expo-local-authentication`.
 - [ ] **Micro-Nutrient Breakdown**: Extended vitamins and minerals tracking (Iron, Calcium, Vitamin D, Potassium).
 - [ ] **Custom Recipe Builder**: Multi-ingredient meal creation with composite macro calculation.
+- [ ] **HealthKit / Google Health Connect Sync**: Direct export and sync with Apple Health and Google Health Connect.
 - [ ] **Incremental TypeScript Migration**: Gradual type-safety adoption starting with `src/services/` and `src/stores/`.

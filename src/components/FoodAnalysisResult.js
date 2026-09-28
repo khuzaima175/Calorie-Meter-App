@@ -169,6 +169,9 @@ export default function FoodAnalysisResult({
                     key={ml}
                     style={[styles.volumeChip, isSel && styles.volumeChipActive]}
                     onPress={() => setWaterMl(ml)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${ml} milliliters`}
+                    accessibilityState={{ selected: isSel }}
                   >
                     <Text style={[styles.volumeChipText, isSel && styles.volumeChipTextActive]}>
                       {ml}ml
@@ -211,6 +214,9 @@ export default function FoodAnalysisResult({
                     key={t.key}
                     style={[styles.typePill, isSelected && styles.typePillActive]}
                     onPress={() => setMealType(t.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Set meal category to ${t.label}`}
+                    accessibilityState={{ selected: isSelected }}
                   >
                     <Text
                       style={[

@@ -105,6 +105,9 @@ export default function TabNavigator() {
                     style={styles.centerBtnOuter}
                     onPress={() => handleTabPress(tab.key)}
                     activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel="Log meal with camera or search"
+                    accessibilityHint="Opens meal logging scanner"
                   >
                     <Animated.View style={[styles.centerBtnInner, { transform: [{ scale: centerBtnScale }] }]}>
                       <Ionicons name="camera-outline" size={22} color={colors.textInverse} />
@@ -120,6 +123,9 @@ export default function TabNavigator() {
                 style={styles.tabSlot}
                 onPress={() => handleTabPress(tab.key)}
                 activeOpacity={0.7}
+                accessibilityRole="tab"
+                accessibilityLabel={`${tab.label} tab`}
+                accessibilityState={{ selected: isActive }}
               >
                 <Ionicons
                   name={isActive ? tab.activeIcon : tab.icon}

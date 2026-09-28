@@ -206,6 +206,9 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
             style={styles.noteToggleBtn}
             onPress={() => setShowNoteInput(!showNoteInput)}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={userNote ? `Meal note: ${userNote}. Tap to edit.` : 'Add portion context or notes'}
+            accessibilityHint="Expands portion chips and custom text note input"
           >
             <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.sageBright} />
             <Text style={styles.noteToggleText}>
@@ -233,6 +236,9 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
                       key={idx}
                       style={[styles.portionChip, isSelected && styles.portionChipActive]}
                       onPress={() => handleApplyChip(chip.value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={chip.label}
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <Text style={[styles.portionChipText, isSelected && styles.portionChipTextActive]}>
                         {chip.label}
@@ -249,6 +255,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
                 value={userNote}
                 onChangeText={setUserNote}
                 multiline={false}
+                accessibilityLabel="Custom meal description or portion note"
               />
             </View>
           )}
@@ -260,11 +267,13 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trayScroll}>
               {photos.map((p, idx) => (
                 <View key={idx} style={styles.thumbWrapper}>
-                  <Image source={{ uri: p.uri }} style={styles.thumbImage} />
+                  <Image source={{ uri: p.uri }} style={styles.thumbImage} accessibilityLabel={`Captured plate ${idx + 1}`} />
                   <TouchableOpacity
                     style={styles.thumbDeleteBtn}
                     onPress={() => handleRemovePhoto(idx)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove plate photo ${idx + 1}`}
                   >
                     <Ionicons name="close" size={12} color="#FFFFFF" />
                   </TouchableOpacity>
@@ -273,7 +282,12 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
               ))}
 
               {photos.length < 4 && (
-                <TouchableOpacity style={styles.addMorePhotoBtn} onPress={handleTakePhoto}>
+                <TouchableOpacity
+                  style={styles.addMorePhotoBtn}
+                  onPress={handleTakePhoto}
+                  accessibilityRole="button"
+                  accessibilityLabel="Take additional angle photo"
+                >
                   <Ionicons name="camera-outline" size={18} color={colors.sageBright} />
                   <Text style={styles.addMorePhotoText}>+ Angle</Text>
                 </TouchableOpacity>
@@ -286,6 +300,8 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
               onPress={handleAnalyzeAll}
               disabled={isProcessing}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Analyze ${photos.length} photos with Gemini AI`}
             >
               {isProcessing ? (
                 <ActivityIndicator size="small" color="#121214" />
@@ -307,6 +323,8 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
           <TouchableOpacity
             style={styles.diagBtn}
             onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+            accessibilityRole="button"
+            accessibilityLabel="Flip camera to front or back lens"
           >
             <Ionicons name="camera-reverse" size={20} color="#FFFFFF" />
             <Text style={styles.diagBtnText}>Flip</Text>
@@ -341,16 +359,29 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
               }
             } : handleTakePhoto}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Capture photo and analyze meal"
+            accessibilityHint="Takes a picture of your food plate for instant AI nutrient analysis"
           >
             <View style={styles.shutterInner} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.diagBtn} onPress={handleLaunchSystemCamera}>
+          <TouchableOpacity
+            style={styles.diagBtn}
+            onPress={handleLaunchSystemCamera}
+            accessibilityRole="button"
+            accessibilityLabel="Open system camera app"
+          >
             <Ionicons name="camera" size={20} color={colors.sageBright} />
             <Text style={styles.diagBtnText}>System</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.diagBtn} onPress={handlePickFromGallery}>
+          <TouchableOpacity
+            style={styles.diagBtn}
+            onPress={handlePickFromGallery}
+            accessibilityRole="button"
+            accessibilityLabel="Choose food photos from device gallery"
+          >
             <Ionicons name="images" size={20} color="#FFFFFF" />
             <Text style={styles.diagBtnText}>Gallery</Text>
           </TouchableOpacity>

@@ -54,7 +54,14 @@
       ],
       "expo-asset",
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#6B9B7D"
+        }
+      ]
     ],
     "extra": {
       "eas": {

@@ -58,6 +58,8 @@ export default function MealSection({
           style={styles.addBtn}
           onPress={() => onAddPress(type)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${config.title}`}
         >
           <Ionicons name="add" size={16} color={colors.sageBright} />
           <Text style={styles.addBtnText}>Add</Text>
@@ -81,6 +83,8 @@ export default function MealSection({
           style={styles.emptyCard}
           onPress={() => onAddPress(type)}
           activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel={`Log your first ${config.title.toLowerCase()}`}
         >
           <Text style={styles.emptyText}>No {config.title.toLowerCase()} logged yet</Text>
           <Ionicons name="add-circle-outline" size={18} color={colors.textTertiary} />

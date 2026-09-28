@@ -155,6 +155,8 @@ export default function WaterTracker({
           style={styles.quickAddBtn}
           onPress={() => handleAdd(250)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Add 250 milliliters of water"
         >
           <Ionicons name="add" size={16} color={colors.water} />
           <Text style={styles.quickAddText}>+250 ml</Text>
@@ -164,6 +166,8 @@ export default function WaterTracker({
           style={styles.quickAddBtn}
           onPress={() => handleAdd(500)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Add 500 milliliters of water"
         >
           <Ionicons name="add" size={16} color={colors.water} />
           <Text style={styles.quickAddText}>+500 ml</Text>
@@ -174,6 +178,8 @@ export default function WaterTracker({
             style={styles.undoBtn}
             onPress={handleUndo}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Undo last water intake log"
           >
             <Ionicons name="remove-circle-outline" size={22} color={colors.textTertiary} />
           </TouchableOpacity>

@@ -78,6 +78,7 @@ export default function Input({
           autoComplete={autoComplete}
           textContentType={textContentType}
           selectTextOnFocus={selectTextOnFocus}
+          accessibilityLabel={rest.accessibilityLabel || label || placeholder}
           onFocus={(e) => {
             setIsFocused(true);
             onFocus?.(e);
@@ -96,6 +97,8 @@ export default function Input({
             onPress={() => onChangeText?.('')}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={styles.clearBtn}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear ${label || 'input'}`}
           >
             <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
           </TouchableOpacity>

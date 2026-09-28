@@ -40,10 +40,13 @@ export default function MealCard({ meal, onDelete, onPress }) {
       style={styles.card}
       activeOpacity={0.7}
       onPress={onPress ? () => onPress(meal) : undefined}
+      accessibilityRole="button"
+      accessibilityLabel={`${meal.name}, ${Math.round(meal.calories)} calories, logged at ${formatTimeString(meal.timestamp)}`}
+      accessibilityHint="Tap to edit meal details"
     >
       <View style={styles.topRow}>
         {meal.image_uri ? (
-          <Image source={{ uri: meal.image_uri }} style={styles.thumbnail} />
+          <Image source={{ uri: meal.image_uri }} style={styles.thumbnail} accessibilityLabel={`${meal.name} photo`} />
         ) : null}
 
         <View style={styles.infoContainer}>
@@ -68,6 +71,8 @@ export default function MealCard({ meal, onDelete, onPress }) {
             onPress={handleDelete}
             style={styles.deleteBtn}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${meal.name}`}
           >
             <Ionicons name="trash-outline" size={17} color={colors.textTertiary} />
           </TouchableOpacity>

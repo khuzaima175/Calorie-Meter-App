@@ -48,6 +48,8 @@ export default function DaySelector({ selectedDate, onSelectDate }) {
         onPress={handlePrevDay}
         style={styles.arrowButton}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel="Previous day"
       >
         <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
       </TouchableOpacity>
@@ -57,7 +59,12 @@ export default function DaySelector({ selectedDate, onSelectDate }) {
         <View style={styles.labelRow}>
           <Text style={styles.dayLabel}>{getDayLabel()}</Text>
           {!isCurrentDayToday && (
-            <TouchableOpacity onPress={handleResetToday} style={styles.todayPill}>
+            <TouchableOpacity
+              onPress={handleResetToday}
+              style={styles.todayPill}
+              accessibilityRole="button"
+              accessibilityLabel="Jump to today"
+            >
               <Text style={styles.todayPillText}>Jump to Today</Text>
             </TouchableOpacity>
           )}
@@ -71,6 +78,9 @@ export default function DaySelector({ selectedDate, onSelectDate }) {
         disabled={isCurrentDayToday}
         style={[styles.arrowButton, isCurrentDayToday && styles.arrowButtonDisabled]}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel="Next day"
+        accessibilityState={{ disabled: isCurrentDayToday }}
       >
         <Ionicons
           name="chevron-forward"

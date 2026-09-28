@@ -146,6 +146,8 @@ export default function DashboardScreen({ navigation }) {
             style={styles.profileBadge}
             onPress={() => navigation.navigate('Settings')}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Profile and settings"
           >
             <Ionicons name="person-circle-outline" size={32} color={colors.sageBright} />
           </TouchableOpacity>
@@ -232,6 +234,8 @@ export default function DashboardScreen({ navigation }) {
             style={styles.activitySummaryCard}
             onPress={() => navigation.navigate('Activity')}
             activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={`Today's workouts: ${dailyTotals.activeMinutes} active minutes, ${dailyTotals.caloriesBurned} calories burned`}
           >
             <View style={styles.actLeft}>
               <View style={styles.actIcon}>
@@ -260,6 +264,8 @@ export default function DashboardScreen({ navigation }) {
             style={styles.aiScanBanner}
             onPress={() => navigation.navigate('LogMeal')}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Open AI Camera meal scanner"
           >
             <Ionicons name="camera-outline" size={15} color={colors.sageBright} />
             <Text style={styles.aiScanText}>AI Camera / Scan</Text>

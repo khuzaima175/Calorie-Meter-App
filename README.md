@@ -44,13 +44,17 @@ The app includes multimodal meal scanning with Gemini 3.5 Flash-Lite, Nutrition 
 - **Water Logging**: Quick +250ml / +500ml intake logging with single-tap undo.
 - **Exercise Tracker**: Log cardio, strength training, and sports with MET-based calorie burn calculations based on body weight and duration.
 
+### Notifications & Reminders
+- **Daily Reminders**: Configurable local notifications for breakfast (8:30 AM), lunch (1:15 PM), hydration (4:30 PM), and evening review (7:45 PM).
+
 ### Nutrition Coach & Meal Planning
 - **Contextual Nutrition Assistant**: Ask questions and receive guidance based on your daily consumed macros and goals.
 - **Custom Meal Planner**: Generate 1-day meal plans matching specific calorie and macronutrient targets.
 - **Daily Review**: 3-point summary of daily achievements, improvements, and targets for tomorrow.
 
-### Storage & Reliability
+### Storage, Accessibility & Reliability
 - **Permanent Image Storage**: Stores photos in permanent document storage on mobile (`FileSystem.documentDirectory`) and IndexedDB on web to avoid OS cache deletion.
+- **Accessibility (A11y)**: Complete screen reader and accessibility label support across buttons, icons, tabs, inputs, and charts.
 - **Backup & Restore**: Export and import full database backups in JSON format with schema version migration.
 - **Factory Reset**: Clear all logs and restore default settings with confirmation safeguards.
 - **Offline Support**: Local SQLite persistence with network status awareness.

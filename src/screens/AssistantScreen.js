@@ -135,6 +135,8 @@ export default function AssistantScreen() {
             style={styles.clearBtn}
             onPress={clearChat}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear chat conversation"
           >
             <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -151,6 +153,8 @@ export default function AssistantScreen() {
               style={styles.actionChip}
               onPress={() => handleQuickPrompt(`What should I eat with my remaining ${goals.calories - dailyTotals.calories} kcal?`)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Ask what to eat next"
             >
               <Ionicons name="restaurant-outline" size={13} color={colors.sageBright} />
               <Text style={styles.actionChipText}>What to eat next</Text>
@@ -160,6 +164,8 @@ export default function AssistantScreen() {
               style={styles.actionChip}
               onPress={handleGenerateReview}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Review today's nutrition log"
             >
               <Ionicons name="analytics-outline" size={13} color={colors.carbs} />
               <Text style={styles.actionChipText}>Review Today's Log</Text>
@@ -169,6 +175,8 @@ export default function AssistantScreen() {
               style={styles.actionChip}
               onPress={handleGenerateMealPlan}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Generate personalized daily meal plan"
             >
               <Ionicons name="calendar-outline" size={13} color={colors.protein} />
               <Text style={styles.actionChipText}>Generate Meal Plan</Text>
@@ -178,6 +186,8 @@ export default function AssistantScreen() {
               style={styles.actionChip}
               onPress={() => handleQuickPrompt('Give me 3 high-protein snack ideas under 200 calories.')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Ask for high protein snack ideas"
             >
               <Ionicons name="flash-outline" size={13} color={colors.caloriesBurned} />
               <Text style={styles.actionChipText}>High-Protein Snacks</Text>
@@ -239,6 +249,7 @@ export default function AssistantScreen() {
               onChangeText={setInputMessage}
               multiline
               maxLength={500}
+              accessibilityLabel="Chat message for Sage AI"
             />
 
             <TouchableOpacity
@@ -248,6 +259,9 @@ export default function AssistantScreen() {
               ]}
               onPress={handleSend}
               disabled={!inputMessage.trim() || isGenerating}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              accessibilityState={{ disabled: !inputMessage.trim() || isGenerating }}
             >
               <Ionicons
                 name="arrow-up"

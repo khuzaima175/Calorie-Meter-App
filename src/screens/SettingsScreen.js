@@ -1,7 +1,7 @@
 // src/screens/SettingsScreen.js
 // Profile settings, BMR/TDEE calculations, target goal customization, database tools, and medical disclaimer
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Modal,
   TextInput,
   Platform,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ import {
   exportAllDataJSON,
   importAllDataJSON,
 } from '../services/databaseService';
+import { scheduleDailyReminders, cancelAllReminders } from '../services/notificationService';
 import { testGeminiApiKey } from '../services/geminiService';
 import Input from '../components/Input';
 import Button from '../components/Button';
@@ -76,6 +78,51 @@ export default function SettingsScreen() {
   const [apiKey, setApiKey] = useState(profile?.custom_api_key || '');
   const [showApiKey, setShowApiKey] = useState(false);
   const [isTestingKey, setIsTestingKey] = useState(false);
+
+  // Notifications State
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      import('expo-notifications').then((Notifications) => {
+        Notifications.getAllScheduledNotificationsAsync().then((scheduled) => {
+          if (scheduled && scheduled.length > 0) {
+            setNotificationsEnabled(true);
+          }
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleToggleNotifications = async (val) => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Web Notice', 'Local push notifications are available on iOS and Android devices.');
+      return;
+    }
+    if (val) {
+      const success = await scheduleDailyReminders();
+      if (success) {
+        setNotificationsEnabled(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert(
+          'Daily Reminders Scheduled! ⏰',
+          'You will receive 4 daily notifications:\n• 8:30 AM — Breakfast Reminder\n• 1:15 PM — Lunch Photo Reminder\n• 4:30 PM — Afternoon Hydration Check\n• 7:45 PM — Dinner & Daily Review'
+        );
+      } else {
+        setNotificationsEnabled(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        Alert.alert(
+          'Permission Required',
+          'Notification permission was not granted. Please enable notifications in your device settings to receive meal and hydration reminders.'
+        );
+      }
+    } else {
+      await cancelAllReminders();
+      setNotificationsEnabled(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Alert.alert('Reminders Paused', 'All scheduled meal and hydration reminders have been cancelled.');
+    }
+  };
 
   const [isSaving, setIsSaving] = useState(false);
   const [importModalVisible, setImportModalVisible] = useState(false);
@@ -551,7 +598,55 @@ export default function SettingsScreen() {
             variant="secondary"
             size="md"
             style={{ marginTop: 8 }}
+            accessibilityLabel="Save Custom Targets"
+            accessibilityRole="button"
           />
+        </Card>
+
+        {/* Section: Notifications & Reminders */}
+        <Text style={styles.sectionHeading}>Daily Reminders & Notifications</Text>
+        <Card style={styles.card}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={styles.switchTitle}>Daily Logging Reminders</Text>
+              <Text style={styles.switchSub}>
+                Smart prompts for breakfast, lunch, hydration, and daily evening macro review.
+              </Text>
+            </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleToggleNotifications}
+              trackColor={{ false: colors.cardBorder, true: colors.sageBright }}
+              thumbColor={Platform.OS === 'ios' ? '#ffffff' : (notificationsEnabled ? '#ffffff' : '#888888')}
+              accessibilityLabel="Toggle daily meal and water reminders"
+              accessibilityRole="switch"
+            />
+          </View>
+
+          {notificationsEnabled ? (
+            <View style={styles.scheduleList}>
+              <View style={styles.scheduleItem}>
+                <Ionicons name="sunny-outline" size={16} color={colors.sageBright} />
+                <Text style={styles.scheduleTime}>08:30 AM</Text>
+                <Text style={styles.scheduleDesc}>Breakfast & Morning Streak</Text>
+              </View>
+              <View style={styles.scheduleItem}>
+                <Ionicons name="restaurant-outline" size={16} color={colors.sageBright} />
+                <Text style={styles.scheduleTime}>01:15 PM</Text>
+                <Text style={styles.scheduleDesc}>Lunch Photo & AI Analysis</Text>
+              </View>
+              <View style={styles.scheduleItem}>
+                <Ionicons name="water-outline" size={16} color={colors.water} />
+                <Text style={styles.scheduleTime}>04:30 PM</Text>
+                <Text style={styles.scheduleDesc}>Hydration Check (250ml+)</Text>
+              </View>
+              <View style={styles.scheduleItem}>
+                <Ionicons name="moon-outline" size={16} color={colors.sageBright} />
+                <Text style={styles.scheduleTime}>07:45 PM</Text>
+                <Text style={styles.scheduleDesc}>Dinner & Daily Macro Review</Text>
+              </View>
+            </View>
+          ) : null}
         </Card>
 
         {/* Section: Gemini AI Configuration */}
@@ -1115,6 +1210,45 @@ const styles = StyleSheet.create({
   modalBtnRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  switchTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  switchSub: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 16,
+  },
+  scheduleList: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  scheduleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+  },
+  scheduleTime: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.sageBright,
+    marginLeft: 8,
+    width: 68,
+  },
+  scheduleDesc: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    flex: 1,
   },
 });
 

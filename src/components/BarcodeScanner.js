@@ -111,6 +111,9 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
             style={[styles.circleControlBtn, torch && styles.torchActiveBtn]}
             onPress={() => setTorch(!torch)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={torch ? 'Turn off camera flashlight' : 'Turn on camera flashlight'}
+            accessibilityState={{ checked: torch }}
           >
             <Ionicons
               name={torch ? 'flash' : 'flash-off'}
@@ -151,6 +154,8 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
                 <TouchableOpacity
                   onPress={() => setShowManualInput(false)}
                   style={styles.closeBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close manual barcode entry"
                 >
                   <Ionicons name="close" size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -163,12 +168,15 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
                     onChangeText={setManualCode}
                     keyboardType="numeric"
                     containerStyle={{ marginBottom: 0 }}
+                    accessibilityLabel="Barcode number digits"
                   />
                 </View>
                 <Button
                   title="Search"
                   onPress={handleManualSubmit}
                   loading={isProcessing}
+                  accessibilityRole="button"
+                  accessibilityLabel="Search product by barcode"
                 />
               </View>
             </View>
@@ -177,6 +185,9 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
               style={styles.manualToggleBtn}
               onPress={() => setShowManualInput(true)}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Type barcode manually"
+              accessibilityHint="Opens a keypad input to manually type product barcode digits"
             >
               <Ionicons name="keypad-outline" size={16} color={colors.textPrimary} />
               <Text style={styles.manualToggleText}>Type barcode manually</Text>
