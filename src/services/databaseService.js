@@ -43,7 +43,15 @@ let webStore = {
 function saveWebStore() {
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
-      window.localStorage.setItem(WEB_STORAGE_KEY, JSON.stringify(webStore));
+      // Guard against localStorage 5MB quota overflow by omitting giant raw base64 image strings
+      const safeStore = {
+        ...webStore,
+        meals: (webStore.meals || []).map((m) => ({
+          ...m,
+          image_uri: m.image_uri && m.image_uri.length > 500 ? null : m.image_uri,
+        })),
+      };
+      window.localStorage.setItem(WEB_STORAGE_KEY, JSON.stringify(safeStore));
     } catch (e) {
       console.warn('LocalStorage save failed:', e);
     }

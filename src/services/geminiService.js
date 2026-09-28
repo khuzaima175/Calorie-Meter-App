@@ -67,18 +67,35 @@ export function getApiKey() {
   return '';
 }
 
-// Rolling window rate limiter (max 15 requests per 60 seconds)
+/**
+ * Helper to strip any Data URL prefix ('data:image/...;base64,') ensuring pure raw Base64 bytes
+ */
+export function cleanBase64(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str.includes(',') ? str.split(',')[1] : str;
+}
+
+// Dynamic rolling window rate limiter (60 RPM for custom keys, 15 RPM for shared key)
 class RateLimiter {
-  constructor(maxRequests = 15, windowMs = 60000) {
-    this.maxRequests = maxRequests;
+  constructor(windowMs = 60000) {
     this.windowMs = windowMs;
     this.timestamps = [];
   }
 
+  getMaxRequests() {
+    try {
+      const customKey = useProfileStore?.getState()?.profile?.custom_api_key;
+      return customKey && customKey.trim() && !customKey.startsWith('AIzaSy_REPLACE') ? 60 : 15;
+    } catch {
+      return 15;
+    }
+  }
+
   canRequest() {
     const now = Date.now();
+    const maxReq = this.getMaxRequests();
     this.timestamps = this.timestamps.filter((t) => now - t < this.windowMs);
-    return this.timestamps.length < this.maxRequests;
+    return this.timestamps.length < maxReq;
   }
 
   recordRequest() {
@@ -93,7 +110,7 @@ class RateLimiter {
   }
 }
 
-const rateLimiter = new RateLimiter(15, 60000);
+const rateLimiter = new RateLimiter(60000);
 
 /**
  * Parses raw Gemini API error responses into user-friendly, actionable messages
@@ -351,7 +368,7 @@ export async function analyzeFoodPhoto(photosInput, mimeType = 'image/jpeg', con
     imageParts = photosInput.map((p) => ({
       inlineData: {
         mimeType: p.mimeType || mimeType || 'image/jpeg',
-        data: p.base64 || p,
+        data: cleanBase64(p.base64 || p),
       },
     }));
   } else if (typeof photosInput === 'object' && photosInput.base64) {
@@ -359,7 +376,7 @@ export async function analyzeFoodPhoto(photosInput, mimeType = 'image/jpeg', con
       {
         inlineData: {
           mimeType: photosInput.mimeType || mimeType || 'image/jpeg',
-          data: photosInput.base64,
+          data: cleanBase64(photosInput.base64),
         },
       },
     ];
@@ -368,7 +385,7 @@ export async function analyzeFoodPhoto(photosInput, mimeType = 'image/jpeg', con
       {
         inlineData: {
           mimeType,
-          data: photosInput,
+          data: cleanBase64(photosInput),
         },
       },
     ];
@@ -488,7 +505,7 @@ Extract the nutrition data and return ONLY a valid JSON object:
         {
           inlineData: {
             mimeType,
-            data: base64Image,
+            data: cleanBase64(base64Image),
           },
         },
         {
@@ -569,6 +586,45 @@ Return ONLY a valid JSON object:
 }
 
 /**
+ * Sanitizes multi-turn chat history to strictly guarantee alternating roles (user -> model -> user)
+ */
+export function sanitizeChatHistory(history, newTurnText) {
+  const contents = [];
+  let lastRole = null;
+
+  for (const m of history || []) {
+    const text = (m?.text || '').trim();
+    if (!text) continue;
+    const role = m.role === 'assistant' || m.role === 'model' ? 'model' : 'user';
+
+    if (role === lastRole) {
+      if (contents.length > 0) {
+        contents[contents.length - 1].parts[0].text += `\n\n${text}`;
+      }
+    } else {
+      contents.push({ role, parts: [{ text }] });
+      lastRole = role;
+    }
+  }
+
+  // Ensure starts with 'user' turn
+  while (contents.length > 0 && contents[0].role !== 'user') {
+    contents.shift();
+  }
+
+  // Add the new user message
+  if (newTurnText && newTurnText.trim()) {
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents[contents.length - 1].parts[0].text += `\n\n${newTurnText.trim()}`;
+    } else {
+      contents.push({ role: 'user', parts: [{ text: newTurnText.trim() }] });
+    }
+  }
+
+  return contents;
+}
+
+/**
  * 4. AI Nutritionist Chat Coach: Supportive, insightful, calm warm tone with Pakistani nutrition expertise
  */
 export async function sendNutritionistChatMessage(chatHistory, userMessage, userContext = {}) {
@@ -588,16 +644,7 @@ Persona & Desi Nutritional Knowledge:
 - Never scold or shame. Give concrete meal ideas and macro adjustments for local cooking.
 - Keep responses under 220 words unless specifically asked for a full recipe.`;
 
-  const contents = chatHistory.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.text }],
-  }));
-
-  contents.push({
-    role: 'user',
-    parts: [{ text: userMessage }],
-  });
-
+  const contents = sanitizeChatHistory(chatHistory, userMessage);
   return await callGemini(contents, systemPrompt);
 }
 
