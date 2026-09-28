@@ -1,5 +1,5 @@
 // tests/core-calculations.test.js
-// Production unit tests for Mifflin-St Jeor metabolism, token estimation, and macro math
+// Production unit tests for Mifflin-St Jeor metabolism, token estimation, streak calculation, MET formula, and chat sanitization
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -70,7 +70,15 @@ function kjToKcal(kj) {
   return Math.round(Number(kj) / 4.184);
 }
 
-// 4. Clean JSON extractor
+// 4. MET calories calculation
+function calculateMETCalories(met, weightKg, durationMins) {
+  const metVal = Number(met) || 3.0;
+  const weight = Number(weightKg) || 70;
+  const mins = Number(durationMins) || 30;
+  return Math.round(((metVal * 3.5 * weight) / 200) * mins);
+}
+
+// 5. Clean JSON extractor
 function cleanJsonText(rawText) {
   let cleaned = (rawText || '').trim();
   if (cleaned.startsWith('```json')) {
@@ -80,6 +88,109 @@ function cleanJsonText(rawText) {
   }
   return cleaned;
 }
+
+// 6. Streak calculation
+function calculateStreakFromDates(uniqueDateList = [], todayStr = '2026-09-28') {
+  const dateSet = new Set(uniqueDateList);
+  if (dateSet.size === 0) return 0;
+
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const today = new Date(y, m - 1, d);
+
+  let streak = 0;
+  let checkDate = new Date(today);
+
+  // If user logged today, streak starts at 1 and we step backwards
+  if (dateSet.has(todayStr)) {
+    streak = 1;
+    checkDate.setDate(checkDate.getDate() - 1);
+  } else {
+    // If not logged today yet, check if logged yesterday to maintain streak
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    if (dateSet.has(yStr)) {
+      streak = 1;
+      checkDate = new Date(yesterday);
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      return 0;
+    }
+  }
+
+  // Count consecutive prior days
+  while (true) {
+    const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+    if (dateSet.has(dateStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+}
+
+// 7. Chat history sanitizer with pair preservation
+function sanitizeChatHistory(history, newTurnText, maxTokenBudget = 8000) {
+  const contents = [];
+  let lastRole = null;
+  const cleanHistory = (history || []).filter((m) => (m?.text || '').trim().length > 0);
+  let currentTokens = estimateTokens(newTurnText || '');
+  const budgetedTurns = [];
+
+  for (let i = cleanHistory.length - 1; i >= 0; i--) {
+    const msg = cleanHistory[i];
+    const text = (msg?.text || '').trim();
+    const tokens = estimateTokens(text);
+    if (currentTokens + tokens > maxTokenBudget && budgetedTurns.length > 0) {
+      break;
+    }
+    budgetedTurns.unshift(msg);
+    currentTokens += tokens;
+  }
+
+  while (
+    budgetedTurns.length > 0 &&
+    (budgetedTurns[0].role === 'assistant' || budgetedTurns[0].role === 'model')
+  ) {
+    budgetedTurns.shift();
+  }
+
+  for (const m of budgetedTurns) {
+    const text = (m?.text || '').trim();
+    if (!text) continue;
+    const role = m.role === 'assistant' || m.role === 'model' ? 'model' : 'user';
+
+    if (role === lastRole) {
+      if (contents.length > 0) {
+        contents[contents.length - 1].parts[0].text += `\n\n${text}`;
+      }
+    } else {
+      contents.push({ role, parts: [{ text }] });
+      lastRole = role;
+    }
+  }
+
+  while (contents.length > 0 && contents[0].role !== 'user') {
+    contents.shift();
+  }
+
+  if (newTurnText && newTurnText.trim()) {
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents[contents.length - 1].parts[0].text += `\n\n${newTurnText.trim()}`;
+    } else {
+      contents.push({ role: 'user', parts: [{ text: newTurnText.trim() }] });
+    }
+  }
+
+  return contents;
+}
+
+// ==========================================
+// TEST SUITE
+// ==========================================
 
 test('Mifflin-St Jeor: Correct BMR & TDEE for 75kg Male (26yo, 178cm, moderate)', () => {
   const profile = {
@@ -92,13 +203,9 @@ test('Mifflin-St Jeor: Correct BMR & TDEE for 75kg Male (26yo, 178cm, moderate)'
   };
 
   const res = calculateMetabolism(profile);
-  // BMR = 10*75 + 6.25*178 - 5*26 + 5 = 750 + 1112.5 - 130 + 5 = 1737.5 -> 1738
   assert.equal(res.bmr, 1738);
-  // TDEE = 1737.5 * 1.55 = 2693.125 -> 2693
   assert.equal(res.tdee, 2693);
-  // Deficit target = 2693.125 - 500 = 2193
   assert.equal(res.suggestedCalories, 2193);
-  // Protein = 75 * 2 = 150g
   assert.equal(res.suggestedProtein, 150);
 });
 
@@ -113,9 +220,7 @@ test('Mifflin-St Jeor: Correct BMR for 60kg Female (30yo, 165cm, light)', () => 
   };
 
   const res = calculateMetabolism(profile);
-  // BMR = 10*60 + 6.25*165 - 5*30 - 161 = 600 + 1031.25 - 150 - 161 = 1320.25 -> 1320
   assert.equal(res.bmr, 1320);
-  // TDEE = 1320.25 * 1.375 = 1815.34 -> 1815
   assert.equal(res.suggestedCalories, 1815);
 });
 
@@ -127,10 +232,46 @@ test('Token Estimator: ~4 characters per token calculation', () => {
 });
 
 test('kJ to kcal conversion accurate to international standards', () => {
-  // 8370 kJ = ~2000 kcal
   assert.equal(kjToKcal(8370), 2000);
-  // 4184 kJ = 1000 kcal
   assert.equal(kjToKcal(4184), 1000);
+});
+
+test('MET Formula: Accurate calorie burn for cardio and strength', () => {
+  // 75kg, 30 mins running @ 8.0 MET: (8.0 * 3.5 * 75 / 200) * 30 = 10.5 * 30 = 315 kcal
+  assert.equal(calculateMETCalories(8.0, 75, 30), 315);
+  // 60kg, 45 mins weight training @ 5.0 MET: (5.0 * 3.5 * 60 / 200) * 45 = 5.25 * 45 = 236.25 -> 236 kcal
+  assert.equal(calculateMETCalories(5.0, 60, 45), 236);
+});
+
+test('Streak Calculation: 5 consecutive days ending today = 5 day streak', () => {
+  const loggedDates = ['2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28'];
+  assert.equal(calculateStreakFromDates(loggedDates, '2026-09-28'), 5);
+});
+
+test('Streak Calculation: Active streak preserved when today is not logged yet', () => {
+  // Logged yesterday, day before, but not today yet -> streak is 3 (pending today)
+  const loggedDates = ['2026-09-25', '2026-09-26', '2026-09-27'];
+  assert.equal(calculateStreakFromDates(loggedDates, '2026-09-28'), 3);
+});
+
+test('Streak Calculation: Streak broken when yesterday was missed', () => {
+  // Logged 2 days ago, but missed yesterday and today -> streak = 0
+  const loggedDates = ['2026-09-25', '2026-09-26'];
+  assert.equal(calculateStreakFromDates(loggedDates, '2026-09-28'), 0);
+});
+
+test('Chat Sanitizer: Drops complete pairs and never starts with an orphaned model turn', () => {
+  const history = [
+    { role: 'user', text: 'Oldest user question' },
+    { role: 'assistant', text: 'Oldest assistant answer' },
+    { role: 'user', text: 'Recent question' },
+    { role: 'assistant', text: 'Recent answer' },
+  ];
+
+  // Budget small enough to fit only recent pair + new message
+  const result = sanitizeChatHistory(history, 'New question', 25);
+  assert.equal(result[0].role, 'user');
+  assert.equal(result[result.length - 1].role, 'user');
 });
 
 test('JSON Text Cleaner: Strips markdown fenced code blocks safely', () => {

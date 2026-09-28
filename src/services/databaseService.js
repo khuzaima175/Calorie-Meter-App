@@ -929,3 +929,49 @@ export async function get7DaySummary(endDate = getTodayString()) {
   return summary;
 }
 
+/**
+ * Calculates current active streak given a list of unique logged dates
+ */
+export function calculateStreakFromDates(uniqueDateList = [], todayStr = getTodayString()) {
+  const dateSet = new Set(uniqueDateList);
+  if (dateSet.size === 0) return 0;
+
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const today = new Date(y, m - 1, d);
+
+  let streak = 0;
+  let checkDate = new Date(today);
+
+  // If user logged today, streak starts at 1 and we step backwards
+  if (dateSet.has(todayStr)) {
+    streak = 1;
+    checkDate.setDate(checkDate.getDate() - 1);
+  } else {
+    // If not logged today yet, check if logged yesterday to maintain streak
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    if (dateSet.has(yStr)) {
+      streak = 1;
+      checkDate = new Date(yesterday);
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      return 0;
+    }
+  }
+
+  // Count consecutive prior days
+  while (true) {
+    const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+    if (dateSet.has(dateStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+}
+
+

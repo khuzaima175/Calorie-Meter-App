@@ -167,7 +167,22 @@ export function parseAndFormatGeminiError(errorInput, status = 0) {
     );
   }
 
-  // 3. Model overload / 503
+  // 3. Schema / Invalid argument error (e.g. unrecognizable image or strict schema restriction)
+  if (
+    status === 400 &&
+    (combined.includes('invalid_argument') ||
+      combined.includes('schema') ||
+      combined.includes('could not parse') ||
+      combined.includes('malformed'))
+  ) {
+    return (
+      '⚠️ Image Recognition Notice\n\n' +
+      'Could not extract structured nutrition facts from this image. ' +
+      'Please ensure the food or nutrition table is well-lit and in clear view, or describe the meal in the Text tab.'
+    );
+  }
+
+  // 4. Model overload / 503
   if (status === 503 || combined.includes('overloaded') || combined.includes('unavailable')) {
     return (
       '⚠️ Gemini Service Busy\n\n' +
@@ -175,7 +190,7 @@ export function parseAndFormatGeminiError(errorInput, status = 0) {
     );
   }
 
-  // 4. Return parsed message if available, else standard message
+  // 5. Return parsed message if available, else standard message
   return message || `Gemini AI service unavailable (Status ${status || 'unknown'}). Please try again.`;
 }
 
@@ -646,26 +661,37 @@ export function estimateTokens(str = '') {
 
 /**
  * Sanitizes multi-turn chat history with a strict token budget (~8000 tokens ceiling)
- * to avoid 400 INVALID_ARGUMENT errors on long chats
+ * to avoid 400 INVALID_ARGUMENT errors on long chats. Always maintains complete
+ * [user -> model] conversation pairs and strict role alternation.
  */
 export function sanitizeChatHistory(history, newTurnText, maxTokenBudget = 8000) {
   const contents = [];
   let lastRole = null;
 
-  // Count backwards to include only what fits in the token budget
+  // Filter valid non-empty messages
+  const cleanHistory = (history || []).filter((m) => (m?.text || '').trim().length > 0);
+
+  // Count backwards from the most recent turn
   let currentTokens = estimateTokens(newTurnText || '');
   const budgetedTurns = [];
 
-  for (let i = (history || []).length - 1; i >= 0; i--) {
-    const msg = history[i];
+  for (let i = cleanHistory.length - 1; i >= 0; i--) {
+    const msg = cleanHistory[i];
     const text = (msg?.text || '').trim();
-    if (!text) continue;
     const tokens = estimateTokens(text);
     if (currentTokens + tokens > maxTokenBudget && budgetedTurns.length > 0) {
       break;
     }
     budgetedTurns.unshift(msg);
     currentTokens += tokens;
+  }
+
+  // Ensure starts with 'user' turn (never orphan a leading model response without its user question)
+  while (
+    budgetedTurns.length > 0 &&
+    (budgetedTurns[0].role === 'assistant' || budgetedTurns[0].role === 'model')
+  ) {
+    budgetedTurns.shift();
   }
 
   for (const m of budgetedTurns) {
@@ -683,7 +709,7 @@ export function sanitizeChatHistory(history, newTurnText, maxTokenBudget = 8000)
     }
   }
 
-  // Ensure starts with 'user' turn
+  // Double check starts with 'user'
   while (contents.length > 0 && contents[0].role !== 'user') {
     contents.shift();
   }

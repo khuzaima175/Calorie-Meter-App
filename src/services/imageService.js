@@ -36,37 +36,50 @@ function openWebDB() {
 async function saveImageToIndexedDB(uri) {
   try {
     const db = await openWebDB();
-    if (!db) return uri;
+    if (!db) return null;
 
     let blob;
-    if (uri.startsWith('data:')) {
-      const res = await fetch(uri);
-      blob = await res.blob();
-    } else if (uri.startsWith('blob:') || uri.startsWith('http')) {
+    if (uri.startsWith('data:') || uri.startsWith('blob:') || uri.startsWith('http')) {
       const res = await fetch(uri);
       blob = await res.blob();
     } else {
       return uri;
     }
 
+    // Gap B: 10MB size limit check to prevent browser storage starvation
+    if (blob.size > 10 * 1024 * 1024) {
+      console.warn('Image exceeds 10MB limit for browser storage.');
+      return null;
+    }
+
     const key = `img_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     return new Promise((resolve) => {
-      const tx = db.transaction([STORE_NAME], 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.put(blob, key);
+      try {
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.put(blob, key);
 
-      req.onsuccess = () => {
-        resolve(`indexeddb://${key}`);
-      };
-      req.onerror = (err) => {
-        console.warn('IndexedDB put error:', err);
-        resolve(uri);
-      };
+        req.onsuccess = () => {
+          resolve(`indexeddb://${key}`);
+        };
+        req.onerror = (err) => {
+          // Gap A: Handle QuotaExceededError or private browsing restrictions
+          console.warn('IndexedDB write error (quota or storage disabled):', err);
+          resolve(null);
+        };
+        tx.onabort = (e) => {
+          console.warn('IndexedDB transaction aborted:', e);
+          resolve(null);
+        };
+      } catch (txErr) {
+        console.warn('IndexedDB transaction failed:', txErr);
+        resolve(null);
+      }
     });
   } catch (err) {
     console.warn('saveImageToIndexedDB error:', err);
-    return uri;
+    return null;
   }
 }
 
