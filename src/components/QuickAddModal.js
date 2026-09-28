@@ -68,6 +68,7 @@ export default function QuickAddModal({
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
     onSave({
+      ...(editMeal || {}),
       id: editMeal?.id,
       name: name.trim(),
       meal_type: mealType,

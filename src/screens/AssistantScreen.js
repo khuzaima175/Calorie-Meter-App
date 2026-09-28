@@ -103,6 +103,7 @@ export default function AssistantScreen() {
       portion: '1 serving',
       timestamp: new Date().toISOString(),
     });
+    Alert.alert('Meal Logged ✓', `"${mealItem.title}" (${mealItem.calories} kcal) has been added to your daily diary.`);
   };
 
   const insets = useSafeAreaInsets();
