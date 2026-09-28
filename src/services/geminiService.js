@@ -1,7 +1,54 @@
 import { useProfileStore } from '../stores/useProfileStore';
 
-const PRIMARY_MODEL = 'gemini-3.7-flash';
-const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+// Ultra-fast multimodal vision & reasoning models (sub-2-second inference)
+const PRIMARY_MODEL = 'gemini-2.5-flash';
+const FALLBACK_MODEL = 'gemini-1.5-flash';
+
+/**
+ * Returns current real-time meal period for Pakistani / local daily routine
+ */
+export function getCurrentMealPeriod() {
+  const now = new Date();
+  const hours = now.getHours() + now.getMinutes() / 60;
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  if (hours >= 5 && hours < 11.5) {
+    return {
+      mealType: 'breakfast',
+      label: 'Breakfast (Nashta)',
+      timeStr,
+      hint: 'Morning breakfast / nashta time (e.g. anda paratha, chai, toast, omelette, halwa puri, nihari)',
+    };
+  } else if (hours >= 11.5 && hours < 16.5) {
+    return {
+      mealType: 'lunch',
+      label: 'Lunch (Dopahar ka Khana)',
+      timeStr,
+      hint: 'Afternoon lunch time (e.g. roti, daal, salan, chicken karahi, biryani, rice, sabzi)',
+    };
+  } else if (hours >= 16.5 && hours < 19.5) {
+    return {
+      mealType: 'snack',
+      label: 'Evening Snack (Sham ki Chai)',
+      timeStr,
+      hint: 'Evening tea / snack time (e.g. chai, biscuits, samosa, pakora, fruit chaat, bun kabab)',
+    };
+  } else if (hours >= 19.5 && hours < 23.5) {
+    return {
+      mealType: 'dinner',
+      label: 'Dinner (Raat ka Khana)',
+      timeStr,
+      hint: 'Night dinner time (e.g. karahi, bbq tikka, kebab, roti, salan, rice, salad)',
+    };
+  } else {
+    return {
+      mealType: 'snack',
+      label: 'Late Night Snack',
+      timeStr,
+      hint: 'Late night snack period',
+    };
+  }
+}
 
 export function getApiKey() {
   try {
@@ -284,43 +331,113 @@ function cleanJsonText(rawText) {
 
 /**
  * 1. AI Photo Recognition: Identifies food items, portions, and complete macros
+ * Specialized for Pakistani / South Asian / Global cuisines with multi-image support
+ * and real-time meal period awareness.
  */
-export async function analyzeFoodPhoto(base64Image, mimeType = 'image/jpeg') {
-  const systemPrompt = `You are a certified clinical sports dietitian and computer vision food expert.
-Analyze the meal photograph and return ONLY a valid, raw JSON object (without markdown code fences) with the exact structure:
+export async function analyzeFoodPhoto(photosInput, mimeType = 'image/jpeg', context = {}) {
+  const currentPeriod = context.mealPeriod || getCurrentMealPeriod();
+  const userNote = (context.userNote || '').trim();
+
+  // Normalize photosInput into array of inlineData parts (supports single base64 or array of images)
+  let imageParts = [];
+  if (Array.isArray(photosInput)) {
+    imageParts = photosInput.map((p) => ({
+      inlineData: {
+        mimeType: p.mimeType || mimeType || 'image/jpeg',
+        data: p.base64 || p,
+      },
+    }));
+  } else if (typeof photosInput === 'object' && photosInput.base64) {
+    imageParts = [
+      {
+        inlineData: {
+          mimeType: photosInput.mimeType || mimeType || 'image/jpeg',
+          data: photosInput.base64,
+        },
+      },
+    ];
+  } else if (typeof photosInput === 'string') {
+    imageParts = [
+      {
+        inlineData: {
+          mimeType,
+          data: photosInput,
+        },
+      },
+    ];
+  }
+
+  if (imageParts.length === 0) {
+    throw new Error('No photo provided for AI analysis.');
+  }
+
+  const systemPrompt = `You are a certified clinical sports dietitian and computer vision food expert with deep expertise in Pakistani, South Asian, and International cuisines.
+Analyze all provided meal photographs and calculate exact portions and macronutrients.
+
+Specialized Pakistani / Desi Cuisine Guidelines:
+- Rotis & Breads:
+  * Whole wheat roti / chapati (~35g flour): ~100-120 kcal, 3g P, 22g C, 0.5g F.
+  * Tandoori roti: ~110-130 kcal.
+  * Plain paratha (ghee/oil): ~260-320 kcal, 4g P, 30g C, 14g F.
+  * Aloo/Keema paratha: ~320-380 kcal.
+  * Roghani/Tandoori naan: ~280-380 kcal. Puri: ~150-180 kcal.
+- Rice Dishes:
+  * Chicken Biryani (1 plate ~350g): ~480-550 kcal, 28g P, 65g C, 18g F.
+  * Mutton/Beef Biryani: ~580-680 kcal, 32g P, 65g C, 25g F.
+  * Chicken / Matar Pulao: ~400-480 kcal. Daal Chawal: ~380-450 kcal.
+- Salans, Curries & Gravies:
+  * Chicken Karahi / Korma / Handi (1 cup): ~320-380 kcal, 32g P, 20g F (accounts for cooking oil).
+  * Nihari (1 plate): ~550-650 kcal, 45g P, 15g C, 35g F.
+  * Haleem (1 bowl): ~380-450 kcal, 25g P, 45g C, 12g F.
+  * Daal Chana / Mash / Moong / Tadka (1 cup): ~220-280 kcal, 14g P, 35g C, 8g F.
+  * Palak Gosht / Paneer: ~280-350 kcal. Aloo Gosht: ~340-400 kcal. Bhindi Masala: ~160-200 kcal.
+- Breakfast / Nashta:
+  * Anda Paratha (1 paratha + 1 egg): ~400-450 kcal.
+  * Omelette (onion, tomato, chilli): ~180-220 kcal.
+  * Doodh Patti Chai (with sugar): ~120-150 kcal. Plain black/green tea: 0-5 kcal.
+  * Halwa Puri Chana (2 puris + halwa + chana): ~750-900 kcal.
+- Snacks & Street Foods:
+  * Samosa (1 pc): ~160-200 kcal. Pakora plate (4-5 pcs): ~240-300 kcal.
+  * Dahi Bhallay / Chaat: ~280-350 kcal. Shami Bun Kabab: ~380-450 kcal. Chicken Roll: ~450-550 kcal.
+- Water / Hydration:
+  * If plain water or zero-calorie beverage, set is_water: true and estimate water_ml accurately.
+- Portion & User Context:
+  * If the user provided notes (e.g. "ate 40%", "half plate", "light oil", "skinless chicken"), mathematically scale the final macros and calorie output to match that exact portion.
+
+Return ONLY a valid, raw JSON object (without markdown code fences) with the exact structure:
 {
-  "name": "Short descriptive meal title (e.g. Avocado Toast with Poached Egg or Glass of Water)",
+  "name": "Short descriptive meal title (e.g. Chicken Karahi with 2 Whole Wheat Rotis)",
   "meal_type": "breakfast" | "lunch" | "dinner" | "snack",
-  "portion": "e.g. 2 slices (280g) or 1 glass (250ml)",
-  "calories": 420,
-  "protein": 18,
-  "carbs": 38,
-  "fat": 22,
-  "fiber": 7,
-  "sugar": 2,
-  "sodium": 380,
+  "portion": "e.g. 1 cup karahi (200g) + 2 rotis (70g) or 1 glass (250ml)",
+  "calories": 520,
+  "protein": 36,
+  "carbs": 48,
+  "fat": 18,
+  "fiber": 6,
+  "sugar": 3,
+  "sodium": 520,
   "health_score": 8,
-  "confidence": 0.92,
-  "is_water": true if the item is plain drinking water or zero-calorie hydration, false otherwise,
-  "water_ml": estimated volume in ml (e.g. 250 for standard glass, 500 for standard bottle) if water/beverage, otherwise 0,
-  "ingredients": ["1 Hass avocado", "2 slices sourdough", "1 pasture-raised egg"],
-  "dietary_tags": ["High Fiber", "Healthy Fats", "Vegetarian"],
-  "health_tips": "Great source of monounsaturated fats. Pair with extra spinach for added micronutrients."
+  "confidence": 0.94,
+  "is_water": false,
+  "water_ml": 0,
+  "ingredients": ["200g bone-in chicken", "2 whole wheat chapatis", "Tomato-ginger gravy", "1.5 tsp cooking oil"],
+  "dietary_tags": ["High Protein", "Pakistani Staple", "Home Cooked"],
+  "health_tips": "Great protein density. Pair with fresh kachumber salad to boost micronutrients and fiber."
 }`;
+
+  let promptInstruction = `Analyze all food items visible across the ${imageParts.length} photo(s).`;
+  promptInstruction += `\nDevice Local Time: ${currentPeriod.timeStr} (${currentPeriod.label} - ${currentPeriod.hint}). Default meal_type to ${currentPeriod.mealType} unless visual evidence clearly shows another meal.`;
+
+  if (userNote) {
+    promptInstruction += `\nUser Custom Note / Portion Details: "${userNote}". Strictly apply this portion/percentage/ingredient adjustment to your calculated calories and macros.`;
+  }
 
   const contents = [
     {
       role: 'user',
       parts: [
-        {
-          inlineData: {
-            mimeType,
-            data: base64Image,
-          },
-        },
-        {
-          text: 'Analyze all food items visible on this plate. Estimate weights, realistic calories, and macronutrient profile accurately.',
-        },
+        ...imageParts,
+        { text: promptInstruction },
       ],
     },
   ];
@@ -385,34 +502,51 @@ Extract the nutrition data and return ONLY a valid JSON object:
 
 /**
  * 3. Natural Language Meal Parser: Parses user text into exact macros
+ * Specialized for Pakistani / South Asian foods & natural Roman Urdu / English phrases
  */
-export async function parseMealDescription(textInput) {
-  const systemPrompt = `You are a nutrition database parser. The user will describe what they ate in natural speech.
-Calculate the nutritional values and return ONLY a valid JSON object:
+export async function parseMealDescription(textInput, context = {}) {
+  const currentPeriod = context.mealPeriod || getCurrentMealPeriod();
+
+  const systemPrompt = `You are a nutrition database parser with deep expertise in Pakistani, South Asian, and International foods.
+The user will describe what they ate in natural speech or Roman Urdu / English (e.g. "2 roti with daal mash and salad", "chicken biryani 1 plate with raita", "1 anda paratha and doodh patti chai", "ate 40% of a chicken burger", "half plate mutton karahi and 1 naan").
+
+Accurate Desi Nutritional Guidelines:
+- 1 standard home Roti / Chapati = 100-120 kcal (3g protein, 22g carbs, 0.5g fat)
+- 1 Paratha = 260-320 kcal (4g protein, 32g carbs, 14g fat)
+- 1 cup Chicken Karahi / Korma = 320-380 kcal (32g protein, 8g carbs, 20g fat)
+- 1 plate Chicken Biryani = 480-550 kcal (28g protein, 65g carbs, 18g fat)
+- 1 cup Daal (Chana/Mash/Moong) = 220-280 kcal (14g protein, 35g carbs, 8g fat)
+- 1 cup Doodh Patti Chai = 120-150 kcal (4g protein, 14g carbs, 6g fat)
+- 1 plate Nihari = 550-650 kcal (45g protein, 15g carbs, 35g fat)
+- If user mentions percentage or portion (e.g. "ate 40%", "half plate"), scale calories and macros to that exact fraction.
+
+Return ONLY a valid JSON object:
 {
   "name": "Clean concise meal name",
   "meal_type": "breakfast" | "lunch" | "dinner" | "snack",
-  "portion": "e.g. 200g grilled chicken breast + 1 cup jasmine rice",
-  "calories": 520,
-  "protein": 54,
-  "carbs": 45,
-  "fat": 6,
-  "fiber": 2,
-  "sugar": 0,
-  "sodium": 320,
-  "health_score": 9,
+  "portion": "e.g. 2 rotis + 1 cup daal mash",
+  "calories": 480,
+  "protein": 20,
+  "carbs": 68,
+  "fat": 12,
+  "fiber": 8,
+  "sugar": 2,
+  "sodium": 420,
+  "health_score": 8,
   "confidence": 0.95,
-  "ingredients": ["Chicken Breast", "Jasmine Rice"],
-  "dietary_tags": ["High Protein", "Lean"],
-  "health_tips": "Excellent lean protein source for muscle recovery."
+  "ingredients": ["2 Whole Wheat Rotis", "Daal Mash", "Kachumber Salad"],
+  "dietary_tags": ["High Fiber", "Pakistani Staple"],
+  "health_tips": "Balanced protein and complex carbohydrates."
 }`;
+
+  const promptText = `Current local time: ${currentPeriod.timeStr} (${currentPeriod.label}). Estimate the full nutritional breakdown for: "${textInput}". Default meal_type to ${currentPeriod.mealType} unless description indicates otherwise.`;
 
   const contents = [
     {
       role: 'user',
       parts: [
         {
-          text: `Estimate the full nutritional breakdown for: "${textInput}"`,
+          text: promptText,
         },
       ],
     },
@@ -428,12 +562,12 @@ Calculate the nutritional values and return ONLY a valid JSON object:
 }
 
 /**
- * 4. AI Nutritionist Chat Coach: Supportive, insightful, calm warm tone
+ * 4. AI Nutritionist Chat Coach: Supportive, insightful, calm warm tone with Pakistani nutrition expertise
  */
 export async function sendNutritionistChatMessage(chatHistory, userMessage, userContext = {}) {
   const { profile = {}, goals = {}, totals = {}, remaining = {} } = userContext;
 
-  const systemPrompt = `You are "Sage", a thoughtful, calm, and evidence-based AI nutrition coach inside the CalorieSnap Pro app.
+  const systemPrompt = `You are "Sage", a thoughtful, calm, and evidence-based AI nutrition coach inside the CalorieSnap Pro app, specializing in Pakistani, South Asian, and Global wellness.
 User Profile:
 - Name: ${profile.name || 'Friend'}
 - Age: ${profile.age || 25}, Gender: ${profile.gender || 'Not specified'}, Weight: ${profile.weight_kg || 70}kg, Height: ${profile.height_cm || 175}cm
@@ -441,12 +575,11 @@ User Profile:
 - Today's Progress: Consumed ${totals.calories || 0} kcal (Remaining: ${remaining.calories ?? (goals.calories - (totals.calories || 0))} kcal)
 - Today's Macros: Protein ${totals.protein || 0}g / ${goals.protein || 140}g, Carbs ${totals.carbs || 0}g / ${goals.carbs || 220}g, Fat ${totals.fat || 0}g / ${goals.fat || 65}g
 
-Persona & Tone:
+Persona & Desi Nutritional Knowledge:
 - Warm, encouraging, concise, and deeply practical.
-- Use formatting (bullet points, bold text) for readability.
-- Never scold or shame. Give concrete meal ideas, recipe suggestions, and macro adjustments.
-- If asked for what to eat with remaining calories, offer 2-3 specific, easy-to-make whole food suggestions.
-- Keep responses under 250 words unless specifically asked for a full recipe or deep scientific explanation.`;
+- Recommend realistic Pakistani food swaps (e.g. swapping 2 oily parathas for 1 whole wheat roti + boiled egg / chicken tikka, reducing excess cooking oil / tarri in karahi, roasted chana for snacking, plain dahi / raita instead of mayonnaise, green tea / kahwa instead of sugary chai).
+- Never scold or shame. Give concrete meal ideas and macro adjustments for local cooking.
+- Keep responses under 220 words unless specifically asked for a full recipe.`;
 
   const contents = chatHistory.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
@@ -465,9 +598,9 @@ Persona & Tone:
  * 5. Daily Nutrition Review Generator
  */
 export async function generateDailyReview(dailySummary, goals) {
-  const systemPrompt = `You are a clinical sports nutritionist. Analyze today's logged intake and provide a 3-bullet concise review:
+  const systemPrompt = `You are a clinical sports nutritionist with expertise in Pakistani and balanced diets. Analyze today's logged intake and provide a 3-bullet concise review:
 1. One strong positive achievement from today.
-2. One key area of improvement (e.g. fiber, hydration, protein timing).
+2. One key area of improvement (e.g. protein intake, excess oil reduction, hydration).
 3. One concrete recommendation for tomorrow.
 Keep the tone encouraging, warm, and under 120 words.`;
 
@@ -484,17 +617,19 @@ Keep the tone encouraging, warm, and under 120 words.`;
 }
 
 /**
- * 6. Personalized Meal Plan Generator
+ * 6. Personalized Meal Plan Generator: Generates delicious, healthy Pakistani & balanced meal plans
  */
-export async function generatePersonalizedMealPlan(profile, goals, preferences = 'whole foods, balanced') {
-  const systemPrompt = `You are a master meal prep chef and nutritionist.
+export async function generatePersonalizedMealPlan(profile, goals, preferences = 'Pakistani balanced whole foods') {
+  const systemPrompt = `You are a master meal prep chef and nutritionist specializing in healthy, high-protein Pakistani and balanced South Asian diets.
 Generate a 1-day tailored meal plan matching:
 Target Calories: ${goals.calories} kcal (Protein: ${goals.protein}g, Carbs: ${goals.carbs}g, Fat: ${goals.fat}g)
 Dietary preferences: ${preferences}
 
+Include realistic, delicious Pakistani meals (e.g. Anda Omelette with Whole Wheat Roti / Oats for breakfast, Grilled Chicken Tikka / Daal with Roti and Kachumber Salad for lunch, Roasted Chana & Green Tea for snack, Lean Beef/Chicken Karahi with Roti for dinner).
+
 Return ONLY valid JSON with this structure:
 {
-  "dayTitle": "High Energy & Lean Recovery Day",
+  "dayTitle": "High Protein Desi Vitality Day",
   "totalCalories": ${goals.calories},
   "totalProtein": ${goals.protein},
   "totalCarbs": ${goals.carbs},
@@ -502,47 +637,47 @@ Return ONLY valid JSON with this structure:
   "meals": [
     {
       "meal_type": "breakfast",
-      "title": "Protein Power Berry Oats",
-      "calories": 450,
-      "protein": 35,
-      "carbs": 55,
-      "fat": 10,
-      "prepTime": "8 mins",
-      "ingredients": ["50g rolled oats", "1 scoop whey protein", "100g blueberries", "15g chia seeds"],
-      "instructions": "Mix oats with warm water/almond milk, stir in protein powder, and top with fresh berries."
+      "title": "2-Egg Herb Omelette with 1 Whole Wheat Roti & Chai",
+      "calories": 420,
+      "protein": 24,
+      "carbs": 38,
+      "fat": 16,
+      "prepTime": "10 mins",
+      "ingredients": ["2 eggs", "1 whole wheat chapati", "Onion & green chilli", "1 cup low-sugar doodh patti"],
+      "instructions": "Whisk eggs with chopped onion, green chillies, and black pepper. Cook in 1 tsp olive oil and serve with warm chapati."
     },
     {
       "meal_type": "lunch",
-      "title": "Mediterranean Quinoa Salmon Bowl",
-      "calories": 650,
-      "protein": 48,
-      "carbs": 60,
-      "fat": 22,
+      "title": "Tandoori Chicken Breast with Daal Chana & Salad",
+      "calories": 620,
+      "protein": 52,
+      "carbs": 58,
+      "fat": 16,
       "prepTime": "15 mins",
-      "ingredients": ["150g baked salmon", "1 cup cooked quinoa", "Cucumber", "Cherry tomatoes", "1 tsp olive oil"],
-      "instructions": "Layer quinoa with flake salmon, diced veggies, and light lemon dressing."
+      "ingredients": ["180g grilled tandoori chicken", "1 cup daal chana", "1 roti", "Cucumber-tomato salad"],
+      "instructions": "Serve grilled chicken tikka with warm daal chana, fresh kachumber salad with lemon juice, and 1 whole wheat roti."
     },
     {
       "meal_type": "snack",
-      "title": "Greek Yogurt & Walnuts",
-      "calories": 250,
-      "protein": 20,
-      "carbs": 12,
-      "fat": 14,
+      "title": "Roasted Bhuna Chana & Kashmiri Kahwa",
+      "calories": 220,
+      "protein": 14,
+      "carbs": 26,
+      "fat": 6,
       "prepTime": "2 mins",
-      "ingredients": ["200g 0% Greek yogurt", "15g crushed walnuts", "Dash of cinnamon"],
-      "instructions": "Combine in a bowl for high-protein satiety."
+      "ingredients": ["45g roasted chana", "1 cup green tea / kahwa with crushed almonds"],
+      "instructions": "High-fiber, high-satiety traditional afternoon snack."
     },
     {
       "meal_type": "dinner",
-      "title": "Lean Sirloin with Roasted Sweet Potato & Broccolini",
-      "calories": 650,
-      "protein": 52,
-      "carbs": 55,
-      "fat": 18,
-      "prepTime": "20 mins",
-      "ingredients": ["180g lean steak", "200g sweet potato cubes", "150g broccolini"],
-      "instructions": "Pan sear steak 3-4 mins per side. Roast sweet potatoes and steam broccolini."
+      "title": "Homestyle Chicken Karahi with 1 Roti & Fresh Mint Raita",
+      "calories": 640,
+      "protein": 50,
+      "carbs": 48,
+      "fat": 20,
+      "prepTime": "25 mins",
+      "ingredients": ["200g chicken breast cubes", "Tomato-ginger gravy with 1.5 tsp oil", "1 whole wheat roti", "1/2 cup low-fat mint raita"],
+      "instructions": "Sear chicken with fresh ginger, garlic, tomatoes, and ground spices. Serve with whole wheat roti and cooling mint raita."
     }
   ]
 }`;

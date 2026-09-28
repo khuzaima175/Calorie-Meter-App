@@ -26,6 +26,7 @@ const MEAL_TYPES = [
 export default function FoodAnalysisResult({
   analysis,
   imageUri,
+  imageUris,
   onSave,
   onCancel,
   onSwitchToText,
@@ -80,8 +81,23 @@ export default function FoodAnalysisResult({
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Photo preview if available */}
-      {imageUri ? (
+      {/* Photo preview (supports multiple photos or single) */}
+      {imageUris && imageUris.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.multiImageScroll}
+        >
+          {imageUris.map((uri, idx) => (
+            <View key={idx} style={styles.multiImageCard}>
+              <Image source={{ uri }} style={styles.multiImage} resizeMode="cover" />
+              <View style={styles.multiImageBadge}>
+                <Text style={styles.multiImageBadgeText}>Plate {idx + 1}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      ) : imageUri ? (
         <View style={styles.imageContainer}>
           <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
           {analysis?.confidence && !isNoFoodDetected ? (
@@ -548,6 +564,35 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   volumeChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  multiImageScroll: {
+    paddingBottom: 14,
+  },
+  multiImageCard: {
+    position: 'relative',
+    marginRight: 10,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: colors.cardBorder,
+  },
+  multiImage: {
+    width: 140,
+    height: 140,
+  },
+  multiImageBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+  },
+  multiImageBadgeText: {
+    ...typography.micro,
     color: '#FFFFFF',
     fontWeight: '700',
   },

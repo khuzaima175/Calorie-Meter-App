@@ -55,6 +55,7 @@ export default function LogMealScreen({ navigation }) {
   const [statusMessage, setStatusMessage] = useState('');
   const [analysisResult, setAnalysisResult] = useState(null);
   const [capturedImageUri, setCapturedImageUri] = useState(null);
+  const [capturedImageUris, setCapturedImageUris] = useState([]);
 
   // Text AI Tab State
   const [textDescription, setTextDescription] = useState('');
@@ -77,16 +78,25 @@ export default function LogMealScreen({ navigation }) {
     setActiveTab(tabKey);
     setAnalysisResult(null);
     setCapturedImageUri(null);
+    setCapturedImageUris([]);
   };
 
-  // 1. Photo Analysis Handler
-  const handleCapturePhoto = async ({ uri, base64, mimeType }) => {
+  // 1. Photo Analysis Handler (supports multi-image & Pakistani meal context)
+  const handleCapturePhoto = async (capturePayload) => {
+    const { uri, base64, mimeType, photos = [], userNote = '', mealPeriod } = capturePayload;
     setIsProcessing(true);
-    setStatusMessage('Analyzing meal photo with Gemini AI...');
-    setCapturedImageUri(uri);
+    setStatusMessage('Analyzing Pakistani / Desi meal with Gemini AI...');
+
+    const uriList = photos.length > 0 ? photos.map((p) => p.uri) : [uri];
+    setCapturedImageUri(uriList[0]);
+    setCapturedImageUris(uriList);
 
     try {
-      const result = await analyzeFoodPhoto(base64, mimeType);
+      const photosToAnalyze = photos.length > 0 ? photos : [{ uri, base64, mimeType }];
+      const result = await analyzeFoodPhoto(photosToAnalyze, mimeType, {
+        userNote,
+        mealPeriod,
+      });
       setAnalysisResult(result);
     } catch (err) {
       Alert.alert(
@@ -94,6 +104,7 @@ export default function LogMealScreen({ navigation }) {
         err.message || 'Could not analyze photo. Please try again or type the meal.'
       );
       setCapturedImageUri(null);
+      setCapturedImageUris([]);
     } finally {
       setIsProcessing(false);
       setStatusMessage('');
@@ -205,6 +216,7 @@ export default function LogMealScreen({ navigation }) {
     }
     setAnalysisResult(null);
     setCapturedImageUri(null);
+    setCapturedImageUris([]);
     navigation.navigate('Dashboard');
   };
 
@@ -382,10 +394,12 @@ export default function LogMealScreen({ navigation }) {
             <FoodAnalysisResult
               analysis={analysisResult}
               imageUri={capturedImageUri}
+              imageUris={capturedImageUris}
               onSave={handleSaveAnalysisResult}
               onCancel={() => {
                 setAnalysisResult(null);
                 setCapturedImageUri(null);
+                setCapturedImageUris([]);
               }}
               onSwitchToText={() => handleTabChange('text')}
             />
@@ -417,13 +431,15 @@ export default function LogMealScreen({ navigation }) {
                     containerStyle={{ marginVertical: 12 }}
                   />
 
-                  {/* Sample suggestions */}
-                  <Text style={styles.examplesLabel}>Try quick examples:</Text>
+                  {/* Sample Pakistani suggestions */}
+                  <Text style={styles.examplesLabel}>Popular Pakistani meal examples:</Text>
                   <View style={styles.examplesRow}>
                     {[
-                      '1 cup Greek yogurt with honey and 30g walnuts',
-                      'Grilled chicken breast 200g, 1 cup brown rice, steamed broccoli',
-                      'Double espresso with 250ml oat milk',
+                      '2 Whole Wheat Rotis + 1 cup Chicken Karahi + Salad',
+                      '1 plate Chicken Biryani with Raita (ate 50%)',
+                      '1 Anda Paratha + 1 cup Karak Doodh Patti Chai',
+                      '1 cup Daal Chana + 1 Tandoori Roti',
+                      '1 Chicken Shami Bun Kabab with Mint Chutney',
                     ].map((example, idx) => (
                       <TouchableOpacity
                         key={idx}
@@ -569,23 +585,28 @@ const styles = StyleSheet.create({
   },
   floatingHeaderWrapper: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 14,
+    right: 14,
     zIndex: 30,
-    backgroundColor: 'rgba(18, 18, 20, 0.75)',
-    paddingVertical: 6,
+    backgroundColor: 'rgba(18, 18, 20, 0.92)',
+    paddingVertical: 5,
     paddingHorizontal: 6,
-    borderRadius: radius.full,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.16)',
     flexDirection: 'row',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
   },
   closeCameraBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 6,
@@ -594,8 +615,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: radius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 20,
     padding: 2,
   },
   segmentedTabBtn: {
@@ -603,8 +624,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: radius.full,
+    paddingVertical: 7,
+    borderRadius: 16,
   },
   segmentedTabBtnActive: {
     backgroundColor: colors.sageBright,
@@ -612,12 +633,13 @@ const styles = StyleSheet.create({
   segmentedTabText: {
     fontSize: 10,
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: 'rgba(255, 255, 255, 0.75)',
     marginLeft: 3,
+    letterSpacing: -0.2,
   },
   segmentedTabTextActive: {
-    color: colors.textInverse,
-    fontWeight: '700',
+    color: '#0A1B10',
+    fontWeight: '800',
   },
   formHeaderRow: {
     flexDirection: 'row',
@@ -651,8 +673,8 @@ const styles = StyleSheet.create({
   segmentedTabsContainerForm: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
-    borderRadius: radius.full,
+    backgroundColor: '#1E1E22',
+    borderRadius: 24,
     padding: 3,
     borderWidth: 1,
     borderColor: colors.cardBorder,
@@ -663,7 +685,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    borderRadius: radius.full,
+    borderRadius: 20,
   },
   segmentedTabBtnFormActive: {
     backgroundColor: colors.sageBright,
@@ -675,8 +697,8 @@ const styles = StyleSheet.create({
     marginLeft: 3,
   },
   segmentedTabTextFormActive: {
-    color: colors.textInverse,
-    fontWeight: '700',
+    color: '#0A1B10',
+    fontWeight: '800',
   },
   tabText: {
     fontSize: 12,
