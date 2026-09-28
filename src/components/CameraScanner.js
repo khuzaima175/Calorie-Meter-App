@@ -220,7 +220,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: '#000000',
   },
   centerContainer: {

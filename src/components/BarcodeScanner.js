@@ -184,7 +184,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: '#000000',
   },
   centerContainer: {

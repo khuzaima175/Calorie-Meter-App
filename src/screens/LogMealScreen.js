@@ -524,7 +524,7 @@ export default function LogMealScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   cameraFullScreenContainer: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: '#000000',
   },
   safeArea: {
