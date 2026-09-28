@@ -22,7 +22,8 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.tysom41.caloriemeterapp"
+      "package": "com.tysom41.caloriemeterapp",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/favicon.png",
