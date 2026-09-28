@@ -99,23 +99,24 @@ export default function TabNavigator() {
 
           if (tab.isCenterAction) {
             return (
-              <TouchableOpacity
-                key={tab.key}
-                style={styles.centerBtnOuter}
-                onPress={() => handleTabPress(tab.key)}
-                activeOpacity={0.85}
-              >
-                <Animated.View style={[styles.centerBtnInner, { transform: [{ scale: centerBtnScale }] }]}>
-                  <Ionicons name="camera-outline" size={22} color={colors.textInverse} />
-                </Animated.View>
-              </TouchableOpacity>
+              <View key={tab.key} style={styles.tabSlot}>
+                <TouchableOpacity
+                  style={styles.centerBtnOuter}
+                  onPress={() => handleTabPress(tab.key)}
+                  activeOpacity={0.85}
+                >
+                  <Animated.View style={[styles.centerBtnInner, { transform: [{ scale: centerBtnScale }] }]}>
+                    <Ionicons name="camera-outline" size={22} color={colors.textInverse} />
+                  </Animated.View>
+                </TouchableOpacity>
+              </View>
             );
           }
 
           return (
             <TouchableOpacity
               key={tab.key}
-              style={styles.tabItem}
+              style={styles.tabSlot}
               onPress={() => handleTabPress(tab.key)}
               activeOpacity={0.7}
             >
@@ -155,10 +156,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.cardBorder,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 8,
+    paddingHorizontal: 0,
   },
-  tabItem: {
+  tabSlot: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.sageBright,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -22,
+    marginTop: -20,
     ...shadows.card,
     borderWidth: 3,
     borderColor: colors.background,

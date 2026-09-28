@@ -1,13 +1,11 @@
-// src/components/CameraScanner.js
-// Live Fullscreen AI Food Camera Viewfinder with Inset-Driven Overlays
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +20,16 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [facing, setFacing] = useState('back');
+  const [cameraKey, setCameraKey] = useState(1);
   const cameraRef = useRef(null);
+
+  // Force a clean native remount after initial layout pass on Android
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCameraKey((k) => k + 1);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleTakePhoto = async () => {
     if (!cameraRef.current || isProcessing) return;
@@ -113,25 +120,31 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     );
   }
 
+  // Use window dimensions to guarantee full-screen coverage
+  // This bypasses any flex chain collapse issues on Android
+  const { width: screenW, height: screenH } = Dimensions.get('window');
+
   return (
     <View
       style={styles.container}
       onLayout={(e) => console.log('[LAYOUT] scannerContainer', JSON.stringify(e.nativeEvent.layout))}
     >
-      {/* 1. Live Native Camera View */}
+      {/* 1. Live Native Camera View — uses flex:1 so it's a REAL layout child */}
       {permission.granted && (
         <CameraView
+          key={cameraKey}
           ref={cameraRef}
-          style={StyleSheet.absoluteFillObject}
+          style={styles.cameraView}
           facing={facing}
           enableTorch={torch}
+          mode="picture"
           onCameraReady={() => console.log('CAMERA READY')}
           onMountError={(e) => console.log('CAMERA MOUNT ERROR:', e?.nativeEvent || e)}
         />
       )}
 
-      {/* 2. Sibling Inset-Driven Overlay */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+      {/* 2. Full-screen overlay — pinned to window dimensions so it never collapses */}
+      <View style={[styles.fullScreenOverlay, { width: screenW, height: screenH }]} pointerEvents="box-none">
         {/* Top Control Bar: positioned below the status bar & top tab pills */}
         <View
           style={[
@@ -222,6 +235,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  cameraView: {
+    flex: 1,
+  },
+  fullScreenOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   centerContainer: {
     flex: 1,

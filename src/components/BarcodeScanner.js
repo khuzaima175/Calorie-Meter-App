@@ -8,6 +8,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +25,15 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [cameraKey, setCameraKey] = useState(1);
+
+  // Force a clean native remount after initial layout pass on Android
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCameraKey((k) => k + 1);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleBarcodeScanned = ({ data }) => {
     if (scanned || isProcessing || !data) return;
@@ -72,6 +82,8 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
     );
   }
 
+  const { width: screenW, height: screenH } = Dimensions.get('window');
+
   return (
     <View
       style={styles.container}
@@ -80,7 +92,8 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
       {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
-          style={StyleSheet.absoluteFillObject}
+          key={cameraKey}
+          style={styles.cameraView}
           facing="back"
           enableTorch={torch}
           barcodeScannerSettings={{
@@ -92,8 +105,8 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
         />
       )}
 
-      {/* 2. Sibling Inset-Driven Overlay */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+      {/* 2. Full-screen overlay pinned to window dimensions */}
+      <View style={[styles.fullScreenOverlay, { width: screenW, height: screenH }]} pointerEvents="box-none">
         {/* Top Controls Row */}
         <View
           style={[
@@ -186,6 +199,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  cameraView: {
+    flex: 1,
+  },
+  fullScreenOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   centerContainer: {
     flex: 1,
