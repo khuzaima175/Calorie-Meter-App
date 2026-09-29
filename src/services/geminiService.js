@@ -976,3 +976,68 @@ Return ONLY valid JSON with this structure:
   }
 }
 
+/**
+ * 7. AI Natural Language Exercise & Calorie Estimator
+ * Understands natural language (e.g. "played 45 mins tape-ball cricket with 2 overs bowling", "walked 40 mins briskly to market")
+ * Returns structured exercise name, duration, estimated MET, intensity, and calculated calories burned based on user weight.
+ */
+export async function estimateExerciseFromText(text, userWeightKg = 75) {
+  if (!text || !text.trim()) {
+    throw new Error('Please describe your exercise or activity.');
+  }
+
+  const weight = Number(userWeightKg) > 0 ? Number(userWeightKg) : 75;
+
+  const systemPrompt = `You are a sports science & fitness metabolic expert.
+Analyze the user's exercise/activity description and calculate accurate calorie burn based on user's weight (${weight} kg).
+Use standard Compendium of Physical Activities MET values (Walking: 2.8 - 4.5, Running: 8.0 - 11.0, Cricket: 4.8 - 5.5, Badminton: 5.5 - 7.0, Gym/Weights: 4.0 - 6.0, Cycling: 6.0 - 8.5).
+Formula: calories = Math.round(((MET * 3.5 * weightKg) / 200) * durationMinutes).
+
+Return ONLY valid JSON with this exact schema:
+{
+  "exercise_name": "Short descriptive activity name (e.g. 'Brisk Walk', 'Cricket Match', 'Gym Strength Training')",
+  "duration_minutes": 30,
+  "intensity": "low", // "low" | "moderate" | "high"
+  "category": "walking", // "walking" | "cardio" | "strength" | "sports" | "flexibility"
+  "met": 4.5,
+  "calories_burned": 150,
+  "steps_estimate": 0,
+  "distance_km_estimate": 0.0,
+  "explanation": "Brief 1-sentence note (e.g. 'Estimated at 5.0 MET for recreational cricket.')"
+}`;
+
+  const contents = [{ role: 'user', parts: [{ text: text.trim() }] }];
+  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
+    jsonMode: true,
+  });
+
+  try {
+    const cleaned = cleanJsonText(rawOutput);
+    const parsed = JSON.parse(cleaned);
+
+    const duration = Math.max(1, Math.min(720, Math.round(Number(parsed.duration_minutes) || 30)));
+    const met = Math.max(1.5, Math.min(20, Number(parsed.met) || 4.0));
+    const calculatedCals = Math.round(((met * 3.5 * weight) / 200) * duration);
+    const calories = Number(parsed.calories_burned) > 0 ? Math.round(Number(parsed.calories_burned)) : calculatedCals;
+
+    const intensity = ['low', 'moderate', 'high'].includes(parsed.intensity) ? parsed.intensity : 'moderate';
+    const isWalking = parsed.category === 'walking' || parsed.exercise_name?.toLowerCase().includes('walk');
+
+    return {
+      exercise_name: parsed.exercise_name || 'Workout',
+      duration_minutes: duration,
+      intensity,
+      category: parsed.category || (isWalking ? 'walking' : 'cardio'),
+      met,
+      calories_burned: calories,
+      steps_estimate: Number(parsed.steps_estimate) || (isWalking ? Math.round(duration * 105) : 0),
+      distance_km_estimate: Number(parsed.distance_km_estimate) || (isWalking ? Number((duration * 0.075).toFixed(2)) : 0),
+      explanation: parsed.explanation || '',
+    };
+  } catch (err) {
+    console.error('Failed to parse AI exercise response:', rawOutput);
+    throw new Error('Could not estimate exercise. Please enter details manually.');
+  }
+}
+
+

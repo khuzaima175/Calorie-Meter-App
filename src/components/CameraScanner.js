@@ -14,7 +14,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -24,14 +26,18 @@ import { colors, radius, typography } from '../theme/colors';
 import { getCurrentMealPeriod } from '../services/geminiService';
 
 const PORTION_CHIPS = [
-  { label: 'Ate 100% (Full)', value: 'Ate full plate (100%)' },
-  { label: 'Ate 50% (Half)', value: 'Ate half portion (50%)' },
-  { label: 'Ate 40%', value: 'Ate 40% of the portion' },
-  { label: '🫒 Light/Olive Oil', value: 'Cooked with light olive oil' },
-  { label: '☕ No Sugar', value: 'Beverage prepared without sugar' },
+  { label: '🍽️ Ate 100% (Full Plate)', value: 'Ate full plate (100%)' },
+  { label: '🥣 Ate 50% (Half)', value: 'Ate half portion (50%)' },
+  { label: '🥗 Ate 33% (Small)', value: 'Ate 33% of the portion' },
+  { label: '🫒 Light Oil / Olive Oil', value: 'Cooked with light olive oil' },
+  { label: '🧈 Desi Ghee / Butter', value: 'Cooked in desi ghee' },
+  { label: '☕ No Sugar / Sugar-Free', value: 'Beverage prepared without sugar' },
+  { label: '🧂 Low Salt / Sodium', value: 'Low sodium / less salt' },
+  { label: '🍗 Extra Meat / Protein', value: 'Extra portion of chicken / meat' },
 ];
 
 export default function CameraScanner({ onCapturePhoto, isProcessing = false }) {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState('back');
   const [photos, setPhotos] = useState([]);
@@ -275,11 +281,11 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         facing={facing}
       />
 
-      {/* 2. Top Meal Period & Time Context Pill */}
-      <View style={styles.topPeriodBadge}>
+      {/* 2. Top Meal Period & Time Context Pill (cleanly positioned below top tabs) */}
+      <View style={[styles.topPeriodBadge, { top: insets.top + 54 }]}>
         <Ionicons
           name={mealPeriod.mealType === 'breakfast' ? 'sunny' : mealPeriod.mealType === 'dinner' ? 'moon' : 'restaurant'}
-          size={13}
+          size={12}
           color={colors.sageBright}
         />
         <Text style={styles.topPeriodText}>
@@ -293,65 +299,47 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         style={styles.bottomOverlay}
         pointerEvents="box-none"
       >
-        {/* Optional Note & Portion Chips Drawer */}
-        <View style={styles.noteSection}>
-          {/* Quick Note Toggle */}
-          <TouchableOpacity
-            style={styles.noteToggleBtn}
-            onPress={() => setShowNoteInput(!showNoteInput)}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={userNote ? `Meal note: ${userNote}. Tap to edit.` : 'Add portion context or notes'}
-            accessibilityHint="Expands portion chips and custom text note input"
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.sageBright} />
-            <Text style={styles.noteToggleText}>
-              {userNote ? `Note: "${userNote}"` : '+ Add Portion Context / Note (e.g. "ate 40%", "light oil")'}
-            </Text>
-            <Ionicons
-              name={showNoteInput ? 'chevron-down' : 'chevron-up'}
-              size={14}
-              color={colors.textTertiary}
-            />
-          </TouchableOpacity>
-
-          {/* Expandable Portion Chips & Input */}
-          {showNoteInput && (
-            <View style={styles.noteInputCard}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chipsScroll}
+        {/* Floating Note / Context Capsule Pill */}
+        <View style={styles.noteCapsuleWrapper}>
+          {userNote ? (
+            <View style={styles.activeNoteCapsule}>
+              <TouchableOpacity
+                style={styles.activeNoteTouchArea}
+                onPress={() => setShowNoteInput(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`Meal context note: ${userNote}. Tap to edit.`}
               >
-                {PORTION_CHIPS.map((chip, idx) => {
-                  const isSelected = userNote.includes(chip.value);
-                  return (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[styles.portionChip, isSelected && styles.portionChipActive]}
-                      onPress={() => handleApplyChip(chip.value)}
-                      accessibilityRole="button"
-                      accessibilityLabel={chip.label}
-                      accessibilityState={{ selected: isSelected }}
-                    >
-                      <Text style={[styles.portionChipText, isSelected && styles.portionChipTextActive]}>
-                        {chip.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-
-              <TextInput
-                style={styles.noteTextInput}
-                placeholder="Type custom note (e.g. 2 rotis + 1 cup karahi, ate half plate)..."
-                placeholderTextColor="rgba(255, 255, 255, 0.4)"
-                value={userNote}
-                onChangeText={setUserNote}
-                multiline={false}
-                accessibilityLabel="Custom meal description or portion note"
-              />
+                <View style={styles.activeDot} />
+                <Text style={styles.activeNoteText} numberOfLines={1}>
+                  "{userNote}"
+                </Text>
+                <Ionicons name="pencil" size={11} color={colors.sageBright} style={{ marginLeft: 5 }} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.clearNoteBtn}
+                onPress={() => {
+                  setUserNote('');
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear meal context note"
+              >
+                <Ionicons name="close-circle" size={16} color="rgba(255, 255, 255, 0.65)" />
+              </TouchableOpacity>
             </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.emptyNoteCapsule}
+              onPress={() => setShowNoteInput(true)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Add portion context or notes"
+            >
+              <Ionicons name="create-outline" size={13} color={colors.sageBright} />
+              <Text style={styles.emptyNoteText}>+ Add Portion / Note (e.g. "half plate", "light oil")</Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -458,6 +446,116 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Sleek Frosted Meal Context & Portion Modal */}
+      <Modal
+        visible={showNoteInput}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowNoteInput(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalBackdrop}
+        >
+          <TouchableOpacity
+            style={styles.modalDismissArea}
+            activeOpacity={1}
+            onPress={() => setShowNoteInput(false)}
+          />
+          <View style={styles.noteSheetCard}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="restaurant-outline" size={18} color={colors.sageBright} />
+                <Text style={styles.sheetTitle}>Meal Context & Portion</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowNoteInput(false)}
+                style={styles.sheetCloseBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close context drawer"
+              >
+                <Ionicons name="close" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.sheetSubtitle}>
+              Help Gemini AI accurately calculate portions, cooking oils, and calories
+            </Text>
+
+            {/* Quick Context & Portion Chips */}
+            <Text style={styles.chipsSectionTitle}>QUICK CHIPS</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsScroll}
+            >
+              {PORTION_CHIPS.map((chip, idx) => {
+                const isSelected = userNote.includes(chip.value);
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.portionChip, isSelected && styles.portionChipActive]}
+                    onPress={() => handleApplyChip(chip.value)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={chip.label}
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <Text style={[styles.portionChipText, isSelected && styles.portionChipTextActive]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Custom Description Input */}
+            <Text style={styles.chipsSectionTitle}>CUSTOM DETAIL</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.noteTextInput}
+                placeholder="e.g. 2 rotis with 1 bowl chicken curry, didn't drink gravy"
+                placeholderTextColor="rgba(255, 255, 255, 0.4)"
+                value={userNote}
+                onChangeText={setUserNote}
+                multiline={true}
+                numberOfLines={2}
+                accessibilityLabel="Custom meal description or notes"
+              />
+              {userNote.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setUserNote('')}
+                  style={styles.inputClearBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear custom note text"
+                >
+                  <Ionicons name="close-circle" size={18} color="rgba(255, 255, 255, 0.4)" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Apply Button */}
+            <TouchableOpacity
+              style={styles.applyNoteBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                setShowNoteInput(false);
+              }}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Apply context to meal"
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#08170E" />
+              <Text style={styles.applyNoteBtnText}>Apply Context</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -498,23 +596,27 @@ const styles = StyleSheet.create({
   },
   topPeriodBadge: {
     position: 'absolute',
-    top: 90,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(18, 18, 20, 0.85)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(20, 22, 28, 0.78)',
+    paddingHorizontal: 11,
+    paddingVertical: 4.5,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(107, 155, 125, 0.4)',
+    borderColor: 'rgba(107, 155, 125, 0.35)',
     zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   topPeriodText: {
     ...typography.micro,
-    color: '#FFFFFF',
+    color: 'rgba(255, 255, 255, 0.88)',
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 5,
     letterSpacing: 0.3,
   },
   bottomOverlay: {
@@ -525,68 +627,192 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingHorizontal: 16,
   },
-  noteSection: {
-    marginBottom: 8,
+  noteCapsuleWrapper: {
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  noteToggleBtn: {
+  emptyNoteCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(18, 18, 20, 0.9)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: radius.md,
+    backgroundColor: 'rgba(20, 22, 28, 0.82)',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  noteToggleText: {
-    flex: 1,
+  emptyNoteText: {
     fontSize: 11,
+    fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.85)',
-    marginHorizontal: 8,
+    marginLeft: 6,
   },
-  noteInputCard: {
-    backgroundColor: 'rgba(24, 24, 28, 0.95)',
-    borderRadius: radius.md,
-    padding: 10,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  chipsScroll: {
-    paddingBottom: 8,
-  },
-  portionChip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: 10,
+  activeNoteCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(20, 26, 22, 0.92)',
+    paddingLeft: 12,
+    paddingRight: 6,
     paddingVertical: 5,
     borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(107, 155, 125, 0.55)',
+    maxWidth: '92%',
+    shadowColor: colors.sageBright,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  activeNoteTouchArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.sageBright,
     marginRight: 6,
+  },
+  activeNoteText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    flexShrink: 1,
+  },
+  clearNoteBtn: {
+    padding: 3,
+    marginLeft: 6,
+  },
+  // Modal Sheet Styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalDismissArea: {
+    flex: 1,
+  },
+  noteSheetCard: {
+    backgroundColor: 'rgba(22, 24, 30, 0.98)',
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginLeft: 6,
+  },
+  sheetCloseBtn: {
+    padding: 4,
+  },
+  sheetSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: 14,
+    lineHeight: 17,
+  },
+  chipsSectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textTertiary,
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  chipsScroll: {
+    paddingBottom: 14,
+  },
+  portionChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    marginRight: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   portionChipActive: {
-    backgroundColor: colors.sageBright,
+    backgroundColor: 'rgba(107, 155, 125, 0.25)',
     borderColor: colors.sageBright,
   },
   portionChipText: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '600',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.78)',
+    fontWeight: '500',
   },
   portionChipTextActive: {
-    color: '#121214',
+    color: colors.sageBright,
     fontWeight: '700',
   },
+  inputWrapper: {
+    position: 'relative',
+    marginBottom: 18,
+  },
   noteTextInput: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
     color: '#FFFFFF',
-    fontSize: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
+    fontSize: 13,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingRight: 36,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    minHeight: 54,
+    textAlignVertical: 'top',
+  },
+  inputClearBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    padding: 2,
+  },
+  applyNoteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.sageBright,
+    paddingVertical: 12,
+    borderRadius: radius.lg,
+    shadowColor: colors.sageBright,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  applyNoteBtnText: {
+    color: '#08170E',
+    fontWeight: '700',
+    fontSize: 14,
+    marginLeft: 6,
   },
   multiPhotoTray: {
     backgroundColor: 'rgba(18, 18, 20, 0.92)',

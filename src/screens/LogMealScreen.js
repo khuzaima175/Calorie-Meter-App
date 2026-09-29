@@ -1,7 +1,7 @@
 // src/screens/LogMealScreen.js
 // 5-Tab Smart Meal Logger: AI Photo, Text NLP, Nutrition Label OCR, Barcode Scanner, & Manual Entry
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,6 +60,34 @@ export default function LogMealScreen({ navigation }) {
   const [capturedImageUri, setCapturedImageUri] = useState(null);
   const [capturedImageUris, setCapturedImageUris] = useState([]);
   const barcodeReqIdRef = useRef(0);
+  const scanAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let anim = null;
+    if (isProcessing) {
+      scanAnim.setValue(0);
+      anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(scanAnim, {
+            toValue: 1,
+            duration: 1800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scanAnim, {
+            toValue: 0,
+            duration: 1800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      anim.start();
+    } else {
+      scanAnim.setValue(0);
+    }
+    return () => {
+      if (anim) anim.stop();
+    };
+  }, [isProcessing]);
 
   // Text AI Tab State
   const [textDescription, setTextDescription] = useState('');
@@ -350,12 +380,44 @@ export default function LogMealScreen({ navigation }) {
           />
         )}
 
+        {/* 1b. Frozen Captured Frame & Holographic Laser Scan during Processing */}
+        {isProcessing && capturedImageUri && (
+          <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+            <Image
+              source={{ uri: capturedImageUri }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+            <View style={styles.scanningPhotoTint} />
+            <Animated.View
+              style={[
+                styles.scanningLaserBeam,
+                {
+                  transform: [
+                    {
+                      translateY: scanAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [100, 560],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.scanningLaserGlow} />
+              <View style={styles.scanningLaserLine} />
+            </Animated.View>
+          </View>
+        )}
+
         {/* 2. Floating Top Header & 5-Column Segmented Bar (respects insets.top) */}
         <View style={[styles.floatingHeaderWrapper, { top: insets.top + 8 }]}>
           <TouchableOpacity
             style={styles.closeCameraBtn}
             onPress={() => navigation.navigate('Dashboard')}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Close camera"
           >
             <Ionicons name="close" size={18} color="#FFFFFF" />
           </TouchableOpacity>
@@ -376,7 +438,7 @@ export default function LogMealScreen({ navigation }) {
                   <Ionicons
                     name={tab.icon}
                     size={14}
-                    color={isActive ? colors.textInverse : 'rgba(255, 255, 255, 0.7)'}
+                    color={isActive ? '#08170E' : 'rgba(255, 255, 255, 0.72)'}
                   />
                   <Text
                     style={[
@@ -397,9 +459,13 @@ export default function LogMealScreen({ navigation }) {
         {isProcessing && (
           <View style={styles.processingOverlay}>
             <View style={styles.processingCard}>
-              <ActivityIndicator size="large" color={colors.sageBright} />
-              <Text style={styles.processingTitle}>Analyzing with AI</Text>
-              <Text style={styles.processingText}>{statusMessage}</Text>
+              <View style={styles.processingBadge}>
+                <Ionicons name="sparkles" size={13} color={colors.sageBright} />
+                <Text style={styles.processingBadgeText}>GEMINI VISION AI</Text>
+              </View>
+              <ActivityIndicator size="large" color={colors.sageBright} style={{ marginTop: 14, marginBottom: 10 }} />
+              <Text style={styles.processingTitle}>Analyzing Food Plate</Text>
+              <Text style={styles.processingText}>{statusMessage || 'Detecting Pakistani ingredients & portion size...'}</Text>
             </View>
           </View>
         )}
@@ -722,36 +788,39 @@ const styles = StyleSheet.create({
     left: 14,
     right: 14,
     zIndex: 30,
-    backgroundColor: 'rgba(18, 18, 20, 0.92)',
-    paddingVertical: 5,
-    paddingHorizontal: 6,
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.16)',
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
   },
   closeCameraBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(20, 22, 28, 0.82)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   segmentedTabsContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 20,
-    padding: 2,
+    backgroundColor: 'rgba(20, 22, 28, 0.82)',
+    borderRadius: 24,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   segmentedTabBtn: {
     flex: 1,
@@ -759,20 +828,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 7,
-    borderRadius: 16,
+    borderRadius: 20,
   },
   segmentedTabBtnActive: {
     backgroundColor: colors.sageBright,
+    shadowColor: colors.sageBright,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
   },
   segmentedTabText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.75)',
+    color: 'rgba(255, 255, 255, 0.72)',
     marginLeft: 3,
     letterSpacing: -0.2,
   },
   segmentedTabTextActive: {
-    color: '#0A1B10',
+    color: '#08170E',
     fontWeight: '800',
   },
   formHeaderRow: {
@@ -946,34 +1020,85 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 4,
   },
+  scanningPhotoTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(6, 8, 12, 0.42)',
+  },
+  scanningLaserBeam: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanningLaserLine: {
+    width: '100%',
+    height: 2,
+    backgroundColor: colors.sageBright,
+    shadowColor: colors.sageBright,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  scanningLaserGlow: {
+    position: 'absolute',
+    width: '100%',
+    height: 32,
+    backgroundColor: 'rgba(107, 155, 125, 0.25)',
+  },
   processingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 10, 12, 0.85)',
+    backgroundColor: 'rgba(6, 8, 12, 0.65)',
     zIndex: 99,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
   processingCard: {
-    backgroundColor: colors.cardBackground,
+    backgroundColor: 'rgba(20, 22, 28, 0.94)',
     borderRadius: radius.xl,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    width: '85%',
+    borderColor: 'rgba(107, 155, 125, 0.35)',
+    width: '88%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  processingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(107, 155, 125, 0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(107, 155, 125, 0.35)',
+  },
+  processingBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.sageBright,
+    marginLeft: 5,
+    letterSpacing: 0.8,
   },
   processingTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginTop: 14,
+    marginTop: 4,
     marginBottom: 4,
   },
   processingText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.75)',
     textAlign: 'center',
+    lineHeight: 18,
   },
   aiManualEstimateBtn: {
     flexDirection: 'row',

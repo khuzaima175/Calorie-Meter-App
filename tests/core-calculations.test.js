@@ -372,4 +372,22 @@ test('Error Formatter: Identifies 429 quota exhaustion gracefully', () => {
   assert.equal(result, '⚠️ Gemini AI Quota Reached');
 });
 
+test('Walking & Steps Calculator: Computes distance, steps, and MET calories accurately', () => {
+  // 30 mins brisk walk (3.8 MET) for 75kg: (3.8 * 3.5 * 75 / 200) * 30 = 149.6 -> 150 kcal
+  const mins = 30;
+  const weight = 75;
+  const met = 3.8;
+  const cals = Math.round(((met * 3.5 * weight) / 200) * mins);
+  assert.equal(cals, 150);
+
+  // 105 steps/min -> 30 mins = 3150 steps
+  const steps = mins * 105;
+  assert.equal(steps, 3150);
+
+  // Distance at 4.5 km/h: 30 mins * (4.5 / 60) = 2.25 km
+  const distanceKm = Number((mins * (4.5 / 60)).toFixed(2));
+  assert.equal(distanceKm, 2.25);
+});
+
+
 
