@@ -126,12 +126,14 @@ export default function LogMealScreen({ navigation }) {
     setCapturedImageUri(uriList[0]);
     setCapturedImageUris(uriList);
 
+    const tStart = Date.now();
     try {
       const photosToAnalyze = photos.length > 0 ? photos : [{ uri, base64, mimeType }];
       const result = await analyzeFoodPhoto(photosToAnalyze, mimeType, {
         userNote,
         mealPeriod,
       });
+      console.log(`[Perf] 🌐 Gemini Vision API roundtrip & inference: ${Date.now() - tStart}ms`);
       setAnalysisResult(result);
     } catch (err) {
       Alert.alert(
@@ -158,9 +160,11 @@ export default function LogMealScreen({ navigation }) {
 
     setIsProcessing(true);
     setStatusMessage('Estimating macros with Gemini AI...');
+    const tStart = Date.now();
 
     try {
       const result = await parseMealDescription(textDescription.trim());
+      console.log(`[Perf] 🌐 Gemini Text API roundtrip & inference: ${Date.now() - tStart}ms`);
       setAnalysisResult(result);
     } catch (err) {
       Alert.alert(
@@ -178,9 +182,11 @@ export default function LogMealScreen({ navigation }) {
     setIsProcessing(true);
     setStatusMessage('Reading Nutrition Facts table...');
     setCapturedImageUri(uri);
+    const tStart = Date.now();
 
     try {
       const result = await analyzeNutritionLabel(base64, mimeType);
+      console.log(`[Perf] 🌐 Gemini Label OCR API roundtrip & inference: ${Date.now() - tStart}ms`);
       setAnalysisResult(result);
     } catch (err) {
       Alert.alert(

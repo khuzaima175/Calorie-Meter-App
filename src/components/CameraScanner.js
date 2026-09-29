@@ -51,12 +51,16 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
   // Helper to resize and compress photos on-device (shrinks 5MB down to ~120KB for 1-2s recognition)
   const optimizeImageForAI = async (uri) => {
+    const t0 = Date.now();
     try {
       const manipResult = await ImageManipulator.manipulateAsync(
         uri,
         [{ resize: { width: 1024 } }],
         { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
+      const resizeMs = Date.now() - t0;
+      const sizeKb = Math.round(((manipResult.base64?.length || 0) * 0.75) / 1024);
+      console.log(`[Perf] ✂️ Photo resized to 1024px in ${resizeMs}ms (JPEG payload: ~${sizeKb} KB)`);
       return {
         uri: manipResult.uri,
         base64: manipResult.base64,
@@ -72,12 +76,15 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const handleTakePhoto = async () => {
     if (!cameraRef.current || isProcessing) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const t0 = Date.now();
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.6,
         skipProcessing: true,
       });
+      const captureMs = Date.now() - t0;
+      console.log(`[Perf] 📸 Hardware camera capture: ${captureMs}ms`);
 
       if (photo?.uri) {
         const optimized = await optimizeImageForAI(photo.uri);

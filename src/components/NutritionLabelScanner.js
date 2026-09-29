@@ -35,14 +35,18 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
     return () => clearTimeout(timer);
   }, []);
 
-  // Resize label image on-device to max 1024px width for instant upload and razor-sharp OCR
+  // Resize label image on-device to 1600px width (preserves micro-text on nutrition tables/ingredients while keeping payload small)
   const optimizeLabelImage = async (uri) => {
+    const t0 = Date.now();
     try {
       const manipResult = await ImageManipulator.manipulateAsync(
         uri,
-        [{ resize: { width: 1024 } }],
-        { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        [{ resize: { width: 1600 } }],
+        { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
+      const resizeMs = Date.now() - t0;
+      const sizeKb = Math.round(((manipResult.base64?.length || 0) * 0.75) / 1024);
+      console.log(`[Perf] 🏷️ Label resized to 1600px in ${resizeMs}ms (JPEG payload: ~${sizeKb} KB)`);
       return {
         uri: manipResult.uri,
         base64: manipResult.base64,
@@ -57,12 +61,15 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
   const handleCapture = async () => {
     if (!cameraRef.current || isProcessing) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const t0 = Date.now();
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.7,
+        quality: 0.8,
         skipProcessing: true,
       });
+      const captureMs = Date.now() - t0;
+      console.log(`[Perf] 📸 Label camera capture: ${captureMs}ms`);
 
       if (photo?.uri) {
         const optimized = await optimizeLabelImage(photo.uri);
