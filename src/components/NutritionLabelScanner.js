@@ -13,6 +13,7 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Button from './Button';
@@ -34,22 +35,46 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
     return () => clearTimeout(timer);
   }, []);
 
+  // Resize label image on-device to max 1024px width for instant upload and razor-sharp OCR
+  const optimizeLabelImage = async (uri) => {
+    try {
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      return {
+        uri: manipResult.uri,
+        base64: manipResult.base64,
+        mimeType: 'image/jpeg',
+      };
+    } catch (err) {
+      console.warn('Label optimization fallback:', err);
+      return null;
+    }
+  };
+
   const handleCapture = async () => {
     if (!cameraRef.current || isProcessing) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.45,
-        base64: true,
+        quality: 0.7,
+        skipProcessing: true,
       });
 
-      if (photo?.uri && photo?.base64) {
-        onCaptureLabel({
-          uri: photo.uri,
-          base64: photo.base64,
-          mimeType: 'image/jpeg',
-        });
+      if (photo?.uri) {
+        const optimized = await optimizeLabelImage(photo.uri);
+        if (optimized) {
+          onCaptureLabel(optimized);
+        } else if (photo.base64) {
+          onCaptureLabel({
+            uri: photo.uri,
+            base64: photo.base64,
+            mimeType: 'image/jpeg',
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to capture label:', err);
@@ -62,17 +87,21 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.45,
-        base64: true,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
-        onCaptureLabel({
-          uri: asset.uri,
-          base64: asset.base64,
-          mimeType: asset.mimeType || 'image/jpeg',
-        });
+        const optimized = await optimizeLabelImage(asset.uri);
+        if (optimized) {
+          onCaptureLabel(optimized);
+        } else if (asset.base64) {
+          onCaptureLabel({
+            uri: asset.uri,
+            base64: asset.base64,
+            mimeType: asset.mimeType || 'image/jpeg',
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to pick label image:', err);

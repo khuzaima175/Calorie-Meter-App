@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, typography } from '../theme/colors';
@@ -48,20 +49,39 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     return () => clearInterval(interval);
   }, []);
 
-  // 1. In-App Camera Capture (optimized quality: 0.45 for sub-second upload)
+  // Helper to resize and compress photos on-device (shrinks 5MB down to ~120KB for 1-2s recognition)
+  const optimizeImageForAI = async (uri) => {
+    try {
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      return {
+        uri: manipResult.uri,
+        base64: manipResult.base64,
+        mimeType: 'image/jpeg',
+      };
+    } catch (err) {
+      console.warn('Image optimization fallback:', err);
+      return null;
+    }
+  };
+
+  // 1. In-App Camera Capture (on-device downscaled to 1024px for sub-second upload)
   const handleTakePhoto = async () => {
     if (!cameraRef.current || isProcessing) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.45,
-        base64: true,
+        quality: 0.6,
         skipProcessing: true,
       });
 
-      if (photo?.uri && photo?.base64) {
-        const newPhotoItem = {
+      if (photo?.uri) {
+        const optimized = await optimizeImageForAI(photo.uri);
+        const newPhotoItem = optimized || {
           uri: photo.uri,
           base64: photo.base64,
           mimeType: 'image/jpeg',
@@ -79,20 +99,15 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     try {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: false,
-        quality: 0.45,
-        base64: true,
+        quality: 0.7,
       });
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
-        setPhotos((prev) => [
-          ...prev,
-          {
-            uri: asset.uri,
-            base64: asset.base64,
-            mimeType: asset.mimeType || 'image/jpeg',
-          },
-        ]);
+        const optimized = await optimizeImageForAI(asset.uri);
+        if (optimized) {
+          setPhotos((prev) => [...prev, optimized]);
+        }
       }
     } catch (err) {
       console.error('System camera error:', err);
@@ -105,16 +120,15 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        quality: 0.45,
-        base64: true,
+        quality: 0.7,
       });
 
       if (!result.canceled && result.assets?.length > 0) {
-        const newItems = result.assets.map((a) => ({
-          uri: a.uri,
-          base64: a.base64,
-          mimeType: a.mimeType || 'image/jpeg',
-        }));
+        const newItems = (
+          await Promise.all(
+            result.assets.map(async (a) => await optimizeImageForAI(a.uri))
+          )
+        ).filter(Boolean);
         setPhotos((prev) => [...prev, ...newItems]);
       }
     } catch (err) {
