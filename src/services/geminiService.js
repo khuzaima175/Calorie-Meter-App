@@ -218,7 +218,7 @@ export async function testGeminiApiKey(candidateKey) {
   }
 
   const startTime = Date.now();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${PRIMARY_MODEL}:generateContent?key=${keyToTest}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${PRIMARY_MODEL}:generateContent`;
   const body = {
     contents: [{ role: 'user', parts: [{ text: 'Reply with only the word: OK' }] }],
     generationConfig: { maxOutputTokens: 5, temperature: 0.1 },
@@ -227,7 +227,10 @@ export async function testGeminiApiKey(candidateKey) {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': keyToTest,
+      },
       body: JSON.stringify(body),
     });
 
@@ -235,12 +238,15 @@ export async function testGeminiApiKey(candidateKey) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      // If 404 on PRIMARY, check FALLBACK
-      if (response.status === 404) {
-        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_MODEL}:generateContent?key=${keyToTest}`;
+      // If 404 or 503 on PRIMARY, check FALLBACK
+      if (response.status === 404 || response.status === 503) {
+        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_MODEL}:generateContent`;
         const fallbackRes = await fetch(fallbackUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': keyToTest,
+          },
           body: JSON.stringify(body),
         });
         if (fallbackRes.ok) {
@@ -291,7 +297,8 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
 
   rateLimiter.recordRequest();
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // Send API key via secure x-goog-api-key header (omits key from URL logs/proxies)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   const generationConfig = {
     temperature: options.temperature ?? 0.2,
@@ -317,12 +324,22 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     };
   }
 
+  // 25-second AbortController timeout to prevent infinite hangs on stalled connections
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
+
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -333,15 +350,16 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
         throw new Error(friendlyMsg);
       }
 
-      // If model 404 or bad model request on PRIMARY, retry with FALLBACK
-      if (model === PRIMARY_MODEL && (response.status === 404 || response.status === 400)) {
-        // But if it's invalid key, fail fast
-        if (errorText.includes('API_KEY_INVALID') || errorText.includes('API key not valid')) {
-          const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
-          throw new Error(friendlyMsg);
-        }
-        console.warn(`Model ${PRIMARY_MODEL} returned ${response.status}, retrying with ${FALLBACK_MODEL}...`);
-        return await callGemini(contents, systemInstruction, FALLBACK_MODEL, options);
+      // If invalid key, fail fast immediately
+      if (errorText.includes('API_KEY_INVALID') || errorText.includes('API key not valid')) {
+        const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
+        throw new Error(friendlyMsg);
+      }
+
+      // If 404 (model missing) or 503 (model overloaded) on PRIMARY, retry with FALLBACK ONCE
+      if (model === PRIMARY_MODEL && (response.status === 404 || response.status === 503) && !options.isRetry) {
+        console.warn(`Primary model ${PRIMARY_MODEL} returned ${response.status}, retrying once with ${FALLBACK_MODEL}...`);
+        return await callGemini(contents, systemInstruction, FALLBACK_MODEL, { ...options, isRetry: true });
       }
 
       const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
@@ -349,7 +367,20 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     }
 
     const data = await response.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
+
+    // Check for safety filter blocks or empty candidates
+    const candidate = data?.candidates?.[0];
+    if (!candidate) {
+      if (data?.promptFeedback?.blockReason) {
+        throw new Error(`⚠️ Request was blocked by AI safety filters (${data.promptFeedback.blockReason}). Please modify the food description or image.`);
+      }
+      throw new Error('AI returned an empty response. Please try again.');
+    }
+    if (candidate.finishReason === 'SAFETY') {
+      throw new Error('⚠️ AI flagged this content as unsafe. Please try a different angle or food description.');
+    }
+
+    const parts = candidate.content?.parts || [];
     // Extract non-thought text parts (handles models with thinking parts)
     const textParts = parts.filter((p) => !p.thought && typeof p.text === 'string' && p.text.trim());
     const candidateText = textParts.length > 0
@@ -357,19 +388,28 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
       : (parts[0]?.text || '');
     return candidateText;
   } catch (error) {
-    // If it's already a quota, rate limit, or invalid key message, do not retry fallback
+    clearTimeout(timeoutId);
+
+    // Timeout error formatting
+    if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+      throw new Error('⚠️ AI request timed out (25s). Please check your internet connection and try again.');
+    }
+
+    // Pass through already formatted errors
     if (
       error.message.includes('Quota') ||
       error.message.includes('quota') ||
       error.message.includes('rate limit') ||
-      error.message.includes('Invalid Gemini API Key')
+      error.message.includes('Invalid Gemini API Key') ||
+      error.message.includes('Network Connection Error') ||
+      error.message.includes('timed out') ||
+      error.message.includes('safety filters')
     ) {
       throw error;
     }
 
-    // If network connection error, do not retry fallback
+    // Network connection errors
     if (
-      error.message?.includes('Network Connection Error') ||
       error.message?.includes('Network request failed') ||
       error.message?.includes('Failed to fetch') ||
       error.message?.includes('network')
@@ -377,9 +417,11 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
       throw new Error('⚠️ Network Connection Error\n\nPlease check your internet connection and try again.');
     }
 
-    if (model === PRIMARY_MODEL) {
-      return await callGemini(contents, systemInstruction, FALLBACK_MODEL, options);
+    // If PRIMARY model failed with an unhandled network glitch and has not retried yet, try FALLBACK ONCE
+    if (model === PRIMARY_MODEL && !options.isRetry) {
+      return await callGemini(contents, systemInstruction, FALLBACK_MODEL, { ...options, isRetry: true });
     }
+
     throw error;
   }
 }
@@ -476,6 +518,14 @@ Specialized Pakistani / Desi Cuisine Guidelines:
   * If plain water or zero-calorie beverage, set is_water: true and estimate water_ml accurately.
 - Portion & User Context:
   * If the user provided notes (e.g. "ate 40%", "half plate", "light oil", "skinless chicken"), mathematically scale the final macros and calorie output to match that exact portion.
+- Non-Food Detection:
+  * If the photo does NOT contain recognizable food, ingredients, dishes, meals, or beverages (e.g. selfie, face, document, laptop, electronics, furniture, pet, empty background), you MUST set:
+  "is_no_food": true,
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0,
+  "name": "Not a recognizable food"
 
 Return ONLY a valid, raw JSON object (without markdown code fences) with the exact structure:
 {
@@ -493,6 +543,7 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
   "confidence": 0.94,
   "is_water": false,
   "water_ml": 0,
+  "is_no_food": false,
   "ingredients": ["200g bone-in chicken", "2 whole wheat chapatis", "Tomato-ginger gravy", "1.5 tsp cooking oil"],
   "dietary_tags": ["High Protein", "Pakistani Staple", "Home Cooked"],
   "health_tips": "Great protein density. Pair with fresh kachumber salad to boost micronutrients and fiber."
@@ -706,6 +757,7 @@ export const NUTRITION_LABEL_SCHEMA = {
   type: 'OBJECT',
   properties: {
     name: { type: 'STRING' },
+    meal_type: { type: 'STRING' },
     portion: { type: 'STRING' },
     calories: { type: 'NUMBER' },
     protein: { type: 'NUMBER' },
@@ -716,7 +768,11 @@ export const NUTRITION_LABEL_SCHEMA = {
     sodium: { type: 'NUMBER' },
     confidence: { type: 'NUMBER' },
     health_score: { type: 'NUMBER' },
+    dietary_tags: { type: 'ARRAY', items: { type: 'STRING' } },
     health_tips: { type: 'STRING' },
+    is_no_food: { type: 'BOOLEAN' },
+    is_water: { type: 'BOOLEAN' },
+    water_ml: { type: 'NUMBER' },
   },
   required: ['name', 'portion', 'calories', 'protein', 'carbs', 'fat'],
 };
@@ -808,7 +864,7 @@ User Profile:
 - Age: ${profile.age || 25}, Gender: ${profile.gender || 'Not specified'}, Weight: ${profile.weight_kg || 70}kg, Height: ${profile.height_cm || 175}cm
 - Primary Goal: ${profile.goal_type || 'Healthy Balance'} (Target: ${goals.calories || 2000} kcal/day)
 - Today's Progress: Consumed ${totals.calories || 0} kcal (Remaining: ${remaining.calories ?? (goals.calories - (totals.calories || 0))} kcal)
-- Today's Macros: Protein ${totals.protein || 0}g / ${goals.protein || 140}g, Carbs ${totals.carbs || 0}g / ${goals.carbs || 220}g, Fat ${totals.fat || 65}g
+- Today's Macros: Protein ${totals.protein || 0}g / ${goals.protein || 140}g, Carbs ${totals.carbs || 0}g / ${goals.carbs || 220}g, Fat ${totals.fat || 0}g / ${goals.fat || 65}g
  
 Persona & Desi Nutritional Knowledge:
 - Warm, encouraging, concise, and deeply practical.

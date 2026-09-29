@@ -26,6 +26,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
   const [facing, setFacing] = useState('back');
   const [cameraKey, setCameraKey] = useState(1);
   const cameraRef = useRef(null);
+  const isCapturingRef = useRef(false);
 
   // Force a clean native remount after initial layout pass on Android
   useEffect(() => {
@@ -59,7 +60,8 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
   };
 
   const handleCapture = async () => {
-    if (!cameraRef.current || isProcessing) return;
+    if (!cameraRef.current || isProcessing || isCapturingRef.current) return;
+    isCapturingRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const t0 = Date.now();
 
@@ -73,45 +75,45 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
       if (photo?.uri) {
         const optimized = await optimizeLabelImage(photo.uri);
-        if (optimized) {
+        if (optimized?.base64) {
           onCaptureLabel(optimized);
-        } else if (photo.base64) {
-          onCaptureLabel({
-            uri: photo.uri,
-            base64: photo.base64,
-            mimeType: 'image/jpeg',
-          });
+        } else {
+          Alert.alert('Label Capture Error', 'Could not process label photo for OCR. Please try again.');
         }
       }
     } catch (err) {
       console.error('Failed to capture label:', err);
+      Alert.alert('Camera Error', err?.message || 'Could not capture label.');
+    } finally {
+      isCapturingRef.current = false;
     }
   };
 
   const handlePickFromGallery = async () => {
+    if (isProcessing || isCapturingRef.current) return;
+    isCapturingRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 0.9,
       });
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
         const optimized = await optimizeLabelImage(asset.uri);
-        if (optimized) {
+        if (optimized?.base64) {
           onCaptureLabel(optimized);
-        } else if (asset.base64) {
-          onCaptureLabel({
-            uri: asset.uri,
-            base64: asset.base64,
-            mimeType: asset.mimeType || 'image/jpeg',
-          });
+        } else {
+          Alert.alert('Gallery Error', 'Could not process label image.');
         }
       }
     } catch (err) {
       console.error('Failed to pick label image:', err);
+      Alert.alert('Gallery Error', 'Failed to pick image from gallery.');
+    } finally {
+      isCapturingRef.current = false;
     }
   };
 
