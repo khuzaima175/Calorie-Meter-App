@@ -2,7 +2,7 @@
 // Zustand store for user profile, goals, and BMR/TDEE calculations
 
 import { create } from 'zustand';
-import { getProfile, updateProfile, getGoals, updateGoals } from '../services/databaseService';
+import { getProfile, updateProfile, getGoals, updateGoals, updateProfileAndGoals } from '../services/databaseService';
 
 /**
  * Calculates BMR and TDEE using the Mifflin-St Jeor Formula
@@ -103,12 +103,13 @@ export const useProfileStore = create((set, get) => ({
     } catch (error) {
       console.error('Failed to load profile:', error);
       set({ isLoading: false });
+      throw error;
     }
   },
 
   saveProfile: async (newProfile, autoUpdateGoals = false) => {
     try {
-      await updateProfile(newProfile);
+      newProfile = { ...get().profile, ...newProfile };
       const metabolism = calculateMetabolism(newProfile);
 
       if (autoUpdateGoals) {
@@ -120,8 +121,10 @@ export const useProfileStore = create((set, get) => ({
           water_ml: metabolism.suggestedWater,
           exercise_minutes: 30,
         };
-        await updateGoals(newGoals);
+        await updateProfileAndGoals(newProfile, newGoals);
         set({ goals: newGoals });
+      } else {
+        await updateProfile(newProfile);
       }
 
       set({
@@ -131,6 +134,7 @@ export const useProfileStore = create((set, get) => ({
       });
     } catch (error) {
       console.error('Failed to save profile:', error);
+      throw error;
     }
   },
 
@@ -140,6 +144,7 @@ export const useProfileStore = create((set, get) => ({
       set({ goals: newGoals });
     } catch (error) {
       console.error('Failed to save goals:', error);
+      throw error;
     }
   },
 }));

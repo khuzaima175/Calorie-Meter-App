@@ -1,3 +1,6 @@
+import { isPlainWater, validateMeal, numberInRange } from '../services/validation';
+import { waterVolume } from '../services/exerciseCalculations';
+import { Alert } from '../services/alertService';
 // src/components/FoodAnalysisResult.js
 // Interactive review & edit card for AI food analysis results with non-food guard & retake action
 
@@ -41,17 +44,9 @@ export default function FoodAnalysisResult({
   const [fat, setFat] = useState(String(analysis?.fat || 0));
   const [fiber, setFiber] = useState(String(analysis?.fiber || 0));
 
-  const isWater =
-    Boolean(analysis?.is_water) ||
-    (name.toLowerCase().includes('water') && !name.toLowerCase().includes('watermelon')) ||
-    name.toLowerCase().includes('hydration') ||
-    name.toLowerCase().includes('drinking water') ||
-    name.toLowerCase().includes('glass of water');
+  const isWater = isPlainWater(analysis);
 
-  const detectedMl =
-    analysis?.water_ml ||
-    (portion.includes('ml') ? parseInt(portion.replace(/\D/g, ''), 10) : 250) ||
-    250;
+  const detectedMl = waterVolume(analysis, portion);
   const [waterMl, setWaterMl] = useState(detectedMl);
 
   // Non-food / empty recognition check (water is valid hydration!)
@@ -64,24 +59,31 @@ export default function FoodAnalysisResult({
   const handleConfirmSave = () => {
     if (isNoFoodDetected || isSaving) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    onSave({
+    const meal = {
       name: name.trim() || (isWater ? 'Glass of Water' : 'Logged Meal'),
       meal_type: mealType,
       portion: isWater ? `${waterMl} ml` : portion.trim() || '1 serving',
-      calories: Number(calories) || 0,
-      protein: Number(protein) || 0,
-      carbs: Number(carbs) || 0,
-      fat: Number(fat) || 0,
-      fiber: Number(fiber) || 0,
+      calories: Number(calories),
+      protein: Number(protein),
+      carbs: Number(carbs),
+      fat: Number(fat),
+      fiber: Number(fiber),
       is_water: isWater,
       water_ml: isWater ? waterMl : 0,
+      sugar: analysis?.sugar ?? 0,
+      sodium: analysis?.sodium ?? 0,
       image_uri: imageUri || null,
       timestamp: new Date().toISOString(),
-    });
+    };
+    try {
+      if (isWater) numberInRange(waterMl, 'Water volume', 1, 10000);
+      else validateMeal({ ...meal, calories: Number(calories), protein: Number(protein), carbs: Number(carbs), fat: Number(fat), fiber: Number(fiber) });
+      onSave(meal);
+    } catch (error) { Alert.alert('Invalid Nutrition', error.message); }
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {/* Photo preview (supports multiple photos or single) */}
       {imageUris && imageUris.length > 1 ? (
         <ScrollView
@@ -126,14 +128,14 @@ export default function FoodAnalysisResult({
           <View style={styles.warningBtnRow}>
             <Button
               title="Retake Photo"
-              onPress={onCancel}
+              onPress={onCancel} disabled={isSaving}
               size="md"
               style={styles.retakeBtn}
             />
             {onSwitchToText && (
               <Button
                 title="Describe Instead"
-                onPress={onSwitchToText}
+                onPress={onSwitchToText} disabled={isSaving}
                 variant="outline"
                 size="md"
                 style={styles.describeBtn}
@@ -165,7 +167,7 @@ export default function FoodAnalysisResult({
               {[150, 250, 500, 750, 1000].map((ml) => {
                 const isSel = waterMl === ml;
                 return (
-                  <TouchableOpacity
+                  <TouchableOpacity disabled={isSaving}
                     key={ml}
                     style={[styles.volumeChip, isSel && styles.volumeChipActive]}
                     onPress={() => setWaterMl(ml)}
@@ -210,7 +212,7 @@ export default function FoodAnalysisResult({
               {MEAL_TYPES.map((t) => {
                 const isSelected = mealType === t.key;
                 return (
-                  <TouchableOpacity
+                  <TouchableOpacity disabled={isSaving}
                     key={t.key}
                     style={[styles.typePill, isSelected && styles.typePillActive]}
                     onPress={() => setMealType(t.key)}
@@ -234,21 +236,21 @@ export default function FoodAnalysisResult({
         )}
 
         {/* Name & Portion */}
-        <Input
+        <Input editable={!isSaving}
           label="Detected Item"
           value={name}
           onChangeText={setName}
           clearable
         />
 
-        <Input
+        <Input editable={!isSaving}
           label="Estimated Portion"
           value={portion}
           onChangeText={setPortion}
         />
 
         {/* Calorie & Macro Grids */}
-        <Input
+        <Input editable={!isSaving}
           label="Total Calories (kcal)"
           value={calories}
           onChangeText={setCalories}
@@ -258,7 +260,7 @@ export default function FoodAnalysisResult({
 
         <View style={styles.macroRow}>
           <View style={styles.macroCol}>
-            <Input
+            <Input editable={!isSaving}
               label="Protein"
               value={protein}
               onChangeText={setProtein}
@@ -267,7 +269,7 @@ export default function FoodAnalysisResult({
             />
           </View>
           <View style={styles.macroCol}>
-            <Input
+            <Input editable={!isSaving}
               label="Carbs"
               value={carbs}
               onChangeText={setCarbs}
@@ -276,7 +278,7 @@ export default function FoodAnalysisResult({
             />
           </View>
           <View style={styles.macroCol}>
-            <Input
+            <Input editable={!isSaving}
               label="Fat"
               value={fat}
               onChangeText={setFat}
@@ -316,7 +318,7 @@ export default function FoodAnalysisResult({
 
           <Button
             title="Discard & Retake"
-            onPress={onCancel}
+            onPress={onCancel} disabled={isSaving}
             variant="ghost"
             size="md"
             style={styles.cancelBtn}

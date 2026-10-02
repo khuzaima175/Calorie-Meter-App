@@ -1,3 +1,4 @@
+import { Alert } from '../services/alertService';
 // src/components/NutritionLabelScanner.js
 // Live Fullscreen Camera Viewfinder for Nutrition Facts OCR with Inset Overlays & Remount
 
@@ -143,7 +144,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
             size="lg"
             style={styles.permBtn}
           />
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.galleryFallbackBtn}
             onPress={handlePickFromGallery}
           >
@@ -178,7 +179,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
             { top: insets.top + 60 },
           ]}
         >
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={[styles.circleControlBtn, torch && styles.torchActiveBtn]}
             onPress={() => setTorch(!torch)}
             activeOpacity={0.7}
@@ -195,7 +196,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
             <Text style={styles.tipsText}>Align Nutrition Facts table</Text>
           </View>
 
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.circleControlBtn}
             onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
             activeOpacity={0.7}
@@ -221,7 +222,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
         {/* Bottom Controls Row */}
         <View style={[styles.bottomControlsRow, { bottom: Math.max(insets.bottom, 24) + 12 }]}>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.actionBtn}
             onPress={handlePickFromGallery}
             disabled={isProcessing}
@@ -232,7 +233,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
           </TouchableOpacity>
 
           {/* Shutter Button */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={[styles.shutterOuter, isProcessing && styles.shutterOuterDisabled]}
             onPress={handleCapture}
             disabled={isProcessing}

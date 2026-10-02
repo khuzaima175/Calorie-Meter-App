@@ -1,3 +1,5 @@
+import { getTodayString } from '../services/databaseService';
+import { Alert } from '../services/alertService';
 // src/screens/DashboardScreen.js
 // Central Dashboard Screen: Calorie ring, earth-tone macros, hydration, workout summary, and meal categories
 
@@ -24,6 +26,7 @@ import MealSection from '../components/MealSection';
 import QuickAddModal from '../components/QuickAddModal';
 import WeeklyTrendsCard from '../components/WeeklyTrendsCard';
 import Card from '../components/Card';
+import NutritionErrorBanner from '../components/NutritionErrorBanner';
 import { colors, radius, typography } from '../theme/colors';
 
 export default function DashboardScreen({ navigation }) {
@@ -74,8 +77,8 @@ export default function DashboardScreen({ navigation }) {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    await refreshData(selectedDate);
-    setRefreshing(false);
+    try { await refreshData(selectedDate); }
+    finally { setRefreshing(false); }
   }, [refreshData, selectedDate]);
 
   const handleOpenAddForType = (type) => {
@@ -113,7 +116,7 @@ export default function DashboardScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -126,6 +129,7 @@ export default function DashboardScreen({ navigation }) {
           />
         }
       >
+        <NutritionErrorBanner />
         {/* Header Bar */}
         <Animated.View style={{ opacity: fadeAnims[0], transform: [{ translateY: slideAnims[0] }] }}>
         <View style={styles.headerRow}>
@@ -259,7 +263,7 @@ export default function DashboardScreen({ navigation }) {
         {/* Meal Categories */}
         <Animated.View style={{ opacity: fadeAnims[3], transform: [{ translateY: slideAnims[3] }] }}>
         <View style={styles.mealsHeader}>
-          <Text style={styles.sectionTitle}>Today's Meals</Text>
+          <Text style={styles.sectionTitle}>{selectedDate === getTodayString() ? "Today's Meals" : 'Meals for ' + selectedDate}</Text>
           <TouchableOpacity
             style={styles.aiScanBanner}
             onPress={() => navigation.navigate('LogMeal')}
@@ -308,7 +312,7 @@ export default function DashboardScreen({ navigation }) {
         </Animated.View>
 
         {/* Quick Add Modal */}
-        <QuickAddModal
+        <QuickAddModal date={selectedDate}
           visible={quickAddVisible}
           initialMealType={activeMealType}
           editMeal={editingMeal}

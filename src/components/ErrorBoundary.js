@@ -47,7 +47,7 @@ export default class ErrorBoundary extends React.Component {
               </ScrollView>
             ) : null}
 
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={styles.retryBtn}
               onPress={this.handleRestart}
               activeOpacity={0.8}

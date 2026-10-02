@@ -22,7 +22,7 @@ export default function Card({
 
   if (onPress) {
     return (
-      <TouchableOpacity
+      <TouchableOpacity accessibilityRole="button"
         style={cardStyles}
         onPress={onPress}
         activeOpacity={activeOpacity}

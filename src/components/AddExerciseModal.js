@@ -1,7 +1,8 @@
+import { Alert } from '../services/alertService';
 // src/components/AddExerciseModal.js
 // Feature-rich Workout & Daily Walking Logger: Walking/Steps Calculator, Categorized Presets, and AI Smart Estimator
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -12,7 +13,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +20,8 @@ import Input from './Input';
 import Button from './Button';
 import { colors, radius, typography } from '../theme/colors';
 import { estimateExerciseFromText } from '../services/geminiService';
+
+import { walkingStats as calculateWalkingStats, presetCalories } from '../services/exerciseCalculations';
 
 const WALKING_PACES = [
   { key: 'casual', label: '🚶 Casual Stroll', met: 2.8, speedKmh: 3.5, stepsPerMin: 95 },
@@ -71,6 +73,7 @@ export default function AddExerciseModal({
   onClose,
   onSave,
   userWeightKg = 75,
+  date,
 }) {
   const weight = Number(userWeightKg) > 0 ? Number(userWeightKg) : 75;
 
@@ -88,8 +91,8 @@ export default function AddExerciseModal({
   const [selectedPreset, setSelectedPreset] = useState(PRESETS[0]);
   const [customName, setCustomName] = useState('');
   const [duration, setDuration] = useState('30');
-  const [caloriesBurned, setCaloriesBurned] = useState('270');
-  const [intensity, setIntensity] = useState('moderate');
+  const [caloriesBurned, setCaloriesBurned] = useState(String(Math.round(9.8 * 3.5 * weight / 200 * 30)));
+  const [intensity, setIntensity] = useState(PRESETS[0].intensity);
   const [category, setCategory] = useState('cardio');
   const [isManualCalorie, setIsManualCalorie] = useState(false);
 
@@ -100,62 +103,34 @@ export default function AddExerciseModal({
 
   const [isSaving, setIsSaving] = useState(false);
 
-  // MET Formula: calories = Math.round(((MET * 3.5 * weightKg) / 200) * durationMinutes)
-  const calculateMETCalories = (metVal, mins, intensityFactor = 1.0) => {
-    const minsNum = Number(mins) || 0;
-    const burned = Math.round(((metVal * intensityFactor * 3.5 * weight) / 200) * minsNum);
-    return String(burned);
-  };
-
-  // Sync Walking Calculations
+  const estimateRequest = useRef(0);
+  const savePending = useRef(false);
   useEffect(() => {
-    if (activeTab !== 'walking') return;
+    estimateRequest.current++;
+    setAiResult(null);
+    setIsEstimatingAI(false);
+    savePending.current = false;
+    setIsSaving(false);
+    return () => { estimateRequest.current++; };
+  }, [visible, weight]);
 
-    if (walkMode === 'duration') {
-      const mins = Math.max(1, Number(walkDurationMins) || 0);
-      const estSteps = Math.round(mins * selectedWalkPace.stepsPerMin);
-      setWalkStepsCount(String(estSteps));
-    } else {
-      const steps = Math.max(1, Number(walkStepsCount) || 0);
-      const estMins = Math.max(1, Math.round(steps / selectedWalkPace.stepsPerMin));
-      setWalkDurationMins(String(estMins));
+  useEffect(() => {
+    if (!isManualCalorie && selectedPreset) {
+      setCaloriesBurned(String(presetCalories(selectedPreset, duration, intensity, weight)));
     }
-  }, [walkMode, walkDurationMins, walkStepsCount, selectedWalkPace, activeTab]);
+  }, [selectedPreset, duration, intensity, weight, isManualCalorie]);
 
-  const getWalkingStats = () => {
-    const mins = Number(walkDurationMins) || 0;
-    const steps = Number(walkStepsCount) || 0;
-    const distanceKm = Number((mins * (selectedWalkPace.speedKmh / 60)).toFixed(2));
-    const calories = Math.round(((selectedWalkPace.met * 3.5 * weight) / 200) * mins);
-    return { mins, steps, distanceKm, calories };
-  };
+  const getWalkingStats = () => calculateWalkingStats(walkMode, walkDurationMins, walkStepsCount, selectedWalkPace, weight);
 
   const handleSelectPreset = (preset) => {
     setSelectedPreset(preset);
     setCustomName(preset.name);
     setCategory(preset.category);
     setIntensity(preset.intensity);
-    if (!isManualCalorie) {
-      const factor = preset.intensity === 'high' ? 1.2 : preset.intensity === 'low' ? 0.85 : 1.0;
-      setCaloriesBurned(calculateMETCalories(preset.met, duration, factor));
-    }
   };
 
-  const handleDurationChange = (val) => {
-    setDuration(val);
-    if (!isManualCalorie && selectedPreset) {
-      const factor = intensity === 'high' ? 1.2 : intensity === 'low' ? 0.85 : 1.0;
-      setCaloriesBurned(calculateMETCalories(selectedPreset.met, val, factor));
-    }
-  };
-
-  const handleIntensityChange = (int) => {
-    setIntensity(int);
-    if (!isManualCalorie && selectedPreset) {
-      const factor = int === 'high' ? 1.2 : int === 'low' ? 0.85 : 1.0;
-      setCaloriesBurned(calculateMETCalories(selectedPreset.met, duration, factor));
-    }
-  };
+  const handleDurationChange = (val) => setDuration(val);
+  const handleIntensityChange = (int) => setIntensity(int);
 
   // AI Estimate Handler
   const handleEstimateAI = async () => {
@@ -163,23 +138,28 @@ export default function AddExerciseModal({
       Alert.alert('Empty Input', 'Please describe what workout or activity you did.');
       return;
     }
+    if (isEstimatingAI || isSaving) return;
+    const request = ++estimateRequest.current;
+    setAiResult(null);
     setIsEstimatingAI(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
     try {
       const result = await estimateExerciseFromText(aiPrompt.trim(), weight);
+      if (request !== estimateRequest.current) return;
       setAiResult(result);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
+      if (request !== estimateRequest.current) return;
       Alert.alert('AI Estimation Failed', err.message || 'Could not estimate calories. Try presets or manual logging.');
     } finally {
-      setIsEstimatingAI(false);
+      if (request === estimateRequest.current) setIsEstimatingAI(false);
     }
   };
 
   // Save Workout to Diary
   const handleSave = async () => {
-    if (isSaving) return;
+    if (savePending.current || isSaving || isEstimatingAI) return;
 
     let finalName = '';
     let finalMins = 30;
@@ -189,15 +169,19 @@ export default function AddExerciseModal({
 
     if (activeTab === 'walking') {
       const stats = getWalkingStats();
+      if (!stats.valid) {
+        Alert.alert('Invalid Walk', 'Enter positive whole steps or a duration corresponding to 1–720 minutes.');
+        return;
+      }
       finalName = `${selectedWalkPace.label.replace(/^[^\w]+/, '')} (${stats.steps.toLocaleString()} steps)`;
-      finalMins = Math.max(1, stats.mins);
+      finalMins = stats.mins;
       finalCals = stats.calories;
       finalIntensity = selectedWalkPace.key === 'incline' || selectedWalkPace.key === 'brisk' ? 'moderate' : 'low';
       finalCategory = 'walking';
     } else if (activeTab === 'presets') {
       finalName = customName.trim() || selectedPreset?.name || 'Workout';
-      finalMins = Math.max(1, Math.min(720, Number(duration) || 30));
-      finalCals = Math.max(0, Math.min(5000, Number(caloriesBurned) || 0));
+      finalMins = Number(duration);
+      finalCals = Number(caloriesBurned);
       finalIntensity = intensity;
       finalCategory = category;
     } else if (activeTab === 'ai') {
@@ -212,11 +196,18 @@ export default function AddExerciseModal({
       finalCategory = aiResult.category || 'cardio';
     }
 
+    if (!Number.isFinite(finalMins) || finalMins < 1 || finalMins > 720 || !Number.isFinite(finalCals) || finalCals < 0 || finalCals > 10000) {
+      Alert.alert('Invalid Workout', 'Enter a duration of 1–720 minutes and calories of 0–10,000.');
+      return;
+    }
+    const saveSession = estimateRequest.current;
+    savePending.current = true;
     setIsSaving(true);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       await onSave({
+        date,
         exercise_name: finalName,
         duration_minutes: finalMins,
         calories_burned: finalCals,
@@ -225,15 +216,17 @@ export default function AddExerciseModal({
         timestamp: new Date().toISOString(),
       });
 
+      if (saveSession !== estimateRequest.current) return;
       // Reset & Close
       setAiResult(null);
       setAiPrompt('');
       onClose();
     } catch (err) {
+      if (saveSession !== estimateRequest.current) return;
       console.warn('Failed to save exercise:', err);
       Alert.alert('Save Failed', err.message || 'Could not save exercise.');
     } finally {
-      setIsSaving(false);
+      if (saveSession === estimateRequest.current) { savePending.current = false; setIsSaving(false); }
     }
   };
 
@@ -248,7 +241,7 @@ export default function AddExerciseModal({
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={() => { if (!isSaving && !isEstimatingAI) onClose(); }}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -261,14 +254,14 @@ export default function AddExerciseModal({
               <Text style={styles.titleText}>Log Movement & Workout</Text>
               <Text style={styles.headerWeightHint}>Calibrated for your weight: {weight} kg</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={onClose} disabled={isSaving || isEstimatingAI} accessibilityRole="button" accessibilityLabel="Close workout form" style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {/* Mode Switcher Tabs */}
           <View style={styles.segmentedContainer}>
-            <TouchableOpacity
+            <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
               style={[styles.segmentBtn, activeTab === 'walking' && styles.segmentBtnActive]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -285,7 +278,7 @@ export default function AddExerciseModal({
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
               style={[styles.segmentBtn, activeTab === 'presets' && styles.segmentBtnActive]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -302,7 +295,7 @@ export default function AddExerciseModal({
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
               style={[styles.segmentBtn, activeTab === 'ai' && styles.segmentBtnActive]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -332,9 +325,9 @@ export default function AddExerciseModal({
               <View>
                 {/* Metric Mode Switcher */}
                 <View style={styles.walkToggleRow}>
-                  <TouchableOpacity
+                  <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
                     style={[styles.walkToggleBtn, walkMode === 'duration' && styles.walkToggleBtnActive]}
-                    onPress={() => setWalkMode('duration')}
+                    onPress={() => { setWalkDurationMins(String(getWalkingStats().mins)); setWalkMode('duration'); }}
                   >
                     <Ionicons
                       name="time-outline"
@@ -346,9 +339,9 @@ export default function AddExerciseModal({
                     </Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
+                  <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
                     style={[styles.walkToggleBtn, walkMode === 'steps' && styles.walkToggleBtnActive]}
-                    onPress={() => setWalkMode('steps')}
+                    onPress={() => { setWalkStepsCount(String(getWalkingStats().steps)); setWalkMode('steps'); }}
                   >
                     <Ionicons
                       name="footsteps-outline"
@@ -363,7 +356,7 @@ export default function AddExerciseModal({
 
                 {/* Primary Input */}
                 {walkMode === 'duration' ? (
-                  <Input
+                  <Input editable={!(isSaving || isEstimatingAI)}
                     label="Minutes Walked"
                     value={walkDurationMins}
                     onChangeText={setWalkDurationMins}
@@ -372,7 +365,7 @@ export default function AddExerciseModal({
                     placeholder="e.g. 30"
                   />
                 ) : (
-                  <Input
+                  <Input editable={!(isSaving || isEstimatingAI)}
                     label="Steps Taken"
                     value={walkStepsCount}
                     onChangeText={setWalkStepsCount}
@@ -388,7 +381,7 @@ export default function AddExerciseModal({
                   {WALKING_PACES.map((pace) => {
                     const isSelected = selectedWalkPace.key === pace.key;
                     return (
-                      <TouchableOpacity
+                      <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
                         key={pace.key}
                         style={[styles.paceCard, isSelected && styles.paceCardActive]}
                         onPress={() => setSelectedWalkPace(pace)}
@@ -408,17 +401,17 @@ export default function AddExerciseModal({
                 <Text style={styles.sectionLabel}>Quick Add Shortcuts</Text>
                 <View style={styles.quickShortcutsRow}>
                   {['+15 min', '+30 min', '+45 min', '+5k steps', '+10k steps'].map((label, idx) => (
-                    <TouchableOpacity
+                    <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
                       key={idx}
                       style={styles.quickShortcutChip}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                         if (label.includes('min')) {
                           setWalkMode('duration');
-                          setWalkDurationMins(label.replace('+', '').replace(' min', ''));
+                          setWalkDurationMins(String(getWalkingStats().mins + Number(label.replace('+', '').replace(' min', ''))));
                         } else {
                           setWalkMode('steps');
-                          setWalkStepsCount(label.includes('10k') ? '10000' : '5000');
+                          setWalkStepsCount(String(getWalkingStats().steps + (label.includes('10k') ? 10000 : 5000)));
                         }
                       }}
                     >
@@ -462,7 +455,7 @@ export default function AddExerciseModal({
                   {CATEGORIES.map((cat) => {
                     const isSelected = selectedCategory === cat.key;
                     return (
-                      <TouchableOpacity
+                      <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
                         key={cat.key}
                         style={[styles.categoryPill, isSelected && styles.categoryPillActive]}
                         onPress={() => setSelectedCategory(cat.key)}
@@ -485,7 +478,7 @@ export default function AddExerciseModal({
                   {filteredPresets.map((p) => {
                     const isSelected = selectedPreset?.name === p.name;
                     return (
-                      <TouchableOpacity
+                      <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
                         key={p.name}
                         style={[
                           styles.presetCard,
@@ -514,7 +507,7 @@ export default function AddExerciseModal({
                 </ScrollView>
 
                 {/* Workout Details */}
-                <Input
+                <Input editable={!(isSaving || isEstimatingAI)}
                   label="Activity Name"
                   value={customName || selectedPreset?.name || ''}
                   onChangeText={setCustomName}
@@ -523,7 +516,7 @@ export default function AddExerciseModal({
 
                 <View style={styles.row}>
                   <View style={styles.col}>
-                    <Input
+                    <Input editable={!(isSaving || isEstimatingAI)}
                       label="Duration"
                       value={duration}
                       onChangeText={handleDurationChange}
@@ -533,7 +526,7 @@ export default function AddExerciseModal({
                   </View>
 
                   <View style={styles.col}>
-                    <Input
+                    <Input editable={!(isSaving || isEstimatingAI)}
                       label="Calories Burned"
                       value={caloriesBurned}
                       onChangeText={(val) => {
@@ -552,7 +545,7 @@ export default function AddExerciseModal({
                   {['low', 'moderate', 'high'].map((int) => {
                     const isSelected = intensity === int;
                     return (
-                      <TouchableOpacity
+                      <TouchableOpacity disabled={isSaving || isEstimatingAI} accessibilityRole="button"
                         key={int}
                         style={[
                           styles.intensityPill,
@@ -581,19 +574,19 @@ export default function AddExerciseModal({
             {activeTab === 'ai' && (
               <View>
                 <Text style={styles.sectionLabel}>Describe Activity in Natural Words</Text>
-                <Input
+                <Input editable={!(isSaving || isEstimatingAI)}
                   label=""
                   value={aiPrompt}
-                  onChangeText={setAiPrompt}
+                  onChangeText={(value) => { setAiPrompt(value); setAiResult(null); }}
                   placeholder="e.g. Played 45 mins tape-ball cricket with 3 overs fast bowling, or walked briskly to market 35 mins"
                   multiline={true}
                   numberOfLines={3}
                 />
 
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button"
                   style={[styles.aiEstimateBtn, isEstimatingAI && styles.aiEstimateBtnDisabled]}
                   onPress={handleEstimateAI}
-                  disabled={isEstimatingAI}
+                  disabled={isSaving || isEstimatingAI}
                 >
                   {isEstimatingAI ? (
                     <ActivityIndicator size="small" color="#08170E" />

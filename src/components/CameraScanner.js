@@ -1,3 +1,4 @@
+import { Alert } from '../services/alertService';
 // src/components/CameraScanner.js
 // Ultra-fast multi-photo food scanner with Pakistani meal context, time-of-day period detection, and custom notes
 
@@ -8,7 +9,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Image,
   TextInput,
   ScrollView,
@@ -265,7 +265,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     return (
       <View style={styles.center}>
         <Text style={styles.text}>Camera permission is required to scan meals</Text>
-        <TouchableOpacity style={styles.btn} onPress={requestPermission}>
+        <TouchableOpacity accessibilityRole="button" style={styles.btn} onPress={requestPermission}>
           <Text style={styles.btnText}>Grant Permission</Text>
         </TouchableOpacity>
       </View>
@@ -458,7 +458,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalBackdrop}
         >
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.modalDismissArea}
             activeOpacity={1}
             onPress={() => setShowNoteInput(false)}

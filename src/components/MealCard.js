@@ -1,3 +1,4 @@
+import { Alert } from '../services/alertService';
 // src/components/MealCard.js
 // Clean meal entry card with calories, macro tags, time, and delete action
 
@@ -8,7 +9,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -21,17 +21,16 @@ export default function MealCard({ meal, onDelete, onPress }) {
 
   useEffect(() => {
     let isMounted = true;
-    if (meal?.image_uri && meal.image_uri.startsWith('indexeddb://')) {
-      resolveImageUriAsync(meal.image_uri).then((resolved) => {
-        if (isMounted && resolved) {
-          setDisplayImageUri(resolved);
-        }
-      });
-    } else {
-      setDisplayImageUri(meal?.image_uri || null);
-    }
+    let objectUrl = null;
+    setDisplayImageUri(null);
+    resolveImageUriAsync(meal?.image_uri).then((resolved) => {
+      if (resolved?.startsWith('blob:') && meal?.image_uri?.startsWith('indexeddb://')) objectUrl = resolved;
+      if (isMounted) setDisplayImageUri(resolved);
+      else if (objectUrl) URL.revokeObjectURL(objectUrl);
+    });
     return () => {
       isMounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [meal?.image_uri]);
   const handleDelete = () => {
@@ -46,7 +45,7 @@ export default function MealCard({ meal, onDelete, onPress }) {
           style: 'destructive',
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            onDelete(meal.id);
+            return onDelete(meal.id);
           },
         },
       ]
@@ -54,20 +53,18 @@ export default function MealCard({ meal, onDelete, onPress }) {
   };
 
   return (
-    <TouchableOpacity
+    <View
       style={styles.card}
-      activeOpacity={0.7}
-      onPress={onPress ? () => onPress(meal) : undefined}
-      accessibilityRole="button"
-      accessibilityLabel={`${meal.name}, ${Math.round(meal.calories)} calories, logged at ${formatTimeString(meal.timestamp)}`}
-      accessibilityHint="Tap to edit meal details"
     >
       <View style={styles.topRow}>
         {displayImageUri ? (
           <Image source={{ uri: displayImageUri }} style={styles.thumbnail} accessibilityLabel={`${meal.name} photo`} />
         ) : null}
 
-        <View style={styles.infoContainer}>
+        <TouchableOpacity style={styles.infoContainer} onPress={() => onPress?.(meal)}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${meal.name}, ${Math.round(meal.calories)} calories`}
+          accessibilityHint="Tap to edit meal details">
           <Text style={styles.mealName} numberOfLines={1}>
             {meal.name}
           </Text>
@@ -77,7 +74,7 @@ export default function MealCard({ meal, onDelete, onPress }) {
             ) : null}
             <Text style={styles.timeText}> • {formatTimeString(meal.timestamp)}</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.calorieContainer}>
           <Text style={styles.calorieNumber}>{Math.round(meal.calories)}</Text>
@@ -125,7 +122,7 @@ export default function MealCard({ meal, onDelete, onPress }) {
           </View>
         )}
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 

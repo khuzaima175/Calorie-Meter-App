@@ -1,8 +1,9 @@
+import { Alert } from '../services/alertService';
 // src/components/ExerciseCard.js
 // Workout entry card with burned calories, duration, and intensity tags
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, typography } from '../theme/colors';
@@ -30,7 +31,7 @@ export default function ExerciseCard({ exercise, onDelete }) {
           style: 'destructive',
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            onDelete(exercise.id);
+            return onDelete(exercise.id);
           },
         },
       ]

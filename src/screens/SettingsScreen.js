@@ -1,3 +1,6 @@
+import { Alert } from '../services/alertService';
+import { validateProfile, validateGoals } from '../services/validation';
+import { useAIStore } from '../stores/useAIStore';
 // src/screens/SettingsScreen.js
 // Profile settings, BMR/TDEE calculations, target goal customization, database tools, and medical disclaimer
 
@@ -8,7 +11,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Linking,
   Share,
   Modal,
@@ -81,6 +83,7 @@ export default function SettingsScreen() {
 
   // Notifications State
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationsBusy, setNotificationsBusy] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -95,6 +98,9 @@ export default function SettingsScreen() {
   }, []);
 
   const handleToggleNotifications = async (val) => {
+    if (notificationsBusy) return;
+    setNotificationsBusy(true);
+    try {
     if (Platform.OS === 'web') {
       Alert.alert('Web Notice', 'Local push notifications are available on iOS and Android devices.');
       return;
@@ -122,6 +128,8 @@ export default function SettingsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       Alert.alert('Reminders Paused', 'All scheduled meal and hydration reminders have been cancelled.');
     }
+    } catch (error) { Alert.alert('Reminder Update Failed', error.message); }
+    finally { setNotificationsBusy(false); }
   };
 
   const [isSaving, setIsSaving] = useState(false);
@@ -129,18 +137,26 @@ export default function SettingsScreen() {
   const [importJsonText, setImportJsonText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
+  useEffect(() => {
+    setName(profile.name); setGender(profile.gender); setAge(String(profile.age));
+    setWeightKg(String(profile.weight_kg)); setHeightCm(String(profile.height_cm));
+    setActivityLevel(profile.activity_level); setGoalType(profile.goal_type); setApiKey(profile.custom_api_key || '');
+  }, [profile]);
+  useEffect(() => {
+    setCalories(String(goals.calories)); setProtein(String(goals.protein)); setCarbs(String(goals.carbs));
+    setFat(String(goals.fat)); setWaterMl(String(goals.water_ml)); setExerciseMins(String(goals.exercise_minutes));
+  }, [goals]);
+
   const handleExportJSON = async () => {
     try {
       const json = await exportAllDataJSON();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (Platform.OS === 'web') {
-        // Web: trigger download or copy
-        if (typeof navigator !== 'undefined' && navigator.clipboard) {
-          await navigator.clipboard.writeText(json);
-          Alert.alert('Backup Copied', 'Your full nutrition database backup has been copied to your clipboard!');
-        } else {
-          Alert.alert('Backup Generated', 'Backup JSON ready (length: ' + json.length + ' chars).');
-        }
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url; link.download = 'CalorieSnap_Backup.json';
+        document.body.appendChild(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else {
         await Share.share({
           title: 'CalorieSnap_Backup.json',
@@ -188,6 +204,10 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             await factoryResetAllData();
+            await cancelAllReminders();
+            setNotificationsEnabled(false);
+            useAIStore.getState().clearChat();
+            useAIStore.setState({ mealPlan: null, dailyReview: null });
             await useProfileStore.getState().loadProfile();
             await refreshNutrition();
             setName('Khzuaima');
@@ -205,49 +225,60 @@ export default function SettingsScreen() {
   };
 
   const handleSaveProfile = async (autoRecalc = false) => {
+    if (isSaving) return;
     setIsSaving(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
 
-    const updatedProfile = {
-      name: name.trim() || 'Explorer',
-      gender,
-      age: Number(age) || 25,
-      weight_kg: Number(weightKg) || 70,
-      height_cm: Number(heightCm) || 175,
-      activity_level: activityLevel,
-      goal_type: goalType,
-    };
+      const updatedProfile = {
+        name: name.trim() || 'Explorer',
+        gender,
+        age: Number(age),
+        weight_kg: Number(weightKg),
+        height_cm: Number(heightCm),
+        activity_level: activityLevel,
+        goal_type: goalType,
+      };
 
-    await saveProfile(updatedProfile, autoRecalc);
+      validateProfile(updatedProfile);
+      await saveProfile(updatedProfile, autoRecalc);
 
-    if (autoRecalc) {
-      const recalc = calculateMetabolism(updatedProfile);
-      setCalories(String(recalc.suggestedCalories));
-      setProtein(String(recalc.suggestedProtein));
-      setCarbs(String(recalc.suggestedCarbs));
-      setFat(String(recalc.suggestedFat));
-      setWaterMl(String(recalc.suggestedWater));
-      Alert.alert('Goals Recalculated', `Updated target to ${recalc.suggestedCalories} kcal based on Mifflin-St Jeor formula.`);
-    } else {
-      Alert.alert('Profile Saved', 'Your personal metrics have been updated.');
-    }
+      if (autoRecalc) {
+        const recalc = calculateMetabolism(updatedProfile);
+        setCalories(String(recalc.suggestedCalories));
+        setProtein(String(recalc.suggestedProtein));
+        setCarbs(String(recalc.suggestedCarbs));
+        setFat(String(recalc.suggestedFat));
+        setWaterMl(String(recalc.suggestedWater));
+        Alert.alert('Goals Recalculated', `Updated target to ${recalc.suggestedCalories} kcal based on Mifflin-St Jeor formula.`);
+      } else {
+        Alert.alert('Profile Saved', 'Your personal metrics have been updated.');
+      }
 
-    setIsSaving(false);
+    } catch (error) { Alert.alert('Save Failed', error.message); }
+    finally { setIsSaving(false); }
   };
 
   const handleSaveGoals = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
 
-    await saveGoals({
-      calories: Number(calories) || 2000,
-      protein: Number(protein) || 140,
-      carbs: Number(carbs) || 220,
-      fat: Number(fat) || 65,
-      water_ml: Number(waterMl) || 2500,
-      exercise_minutes: Number(exerciseMins) || 30,
-    });
+      const newGoals = {
+        calories: Number(calories),
+        protein: Number(protein),
+        carbs: Number(carbs),
+        fat: Number(fat),
+        water_ml: Number(waterMl),
+        exercise_minutes: Number(exerciseMins),
+      };
+      validateGoals(newGoals);
+      await saveGoals(newGoals);
 
-    Alert.alert('Goals Updated', 'Your nutrition and fitness targets have been saved.');
+      Alert.alert('Goals Updated', 'Your nutrition and fitness targets have been saved.');
+    } catch (error) { Alert.alert('Save Failed', error.message); }
+    finally { setIsSaving(false); }
   };
 
   const handleTestApiKey = async () => {
@@ -273,28 +304,33 @@ export default function SettingsScreen() {
   };
 
   const handleSaveApiKey = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    const cleanKey = apiKey.trim().replace(/\s+/g, '');
-    const updatedProfile = {
-      ...(profile || {}),
-      name: name.trim() || 'Explorer',
-      gender,
-      age: Number(age) || 25,
-      weight_kg: Number(weightKg) || 70,
-      height_cm: Number(heightCm) || 175,
-      activity_level: activityLevel,
-      goal_type: goalType,
-      custom_api_key: cleanKey,
-    };
-    await saveProfile(updatedProfile, false);
-    if (cleanKey) {
-      Alert.alert(
-        'Gemini API Key Saved',
-        `Your personal Gemini API key (${cleanKey.length} characters) is active for AI meal scanning, text parsing, and coaching.`
-      );
-    } else {
-      Alert.alert('API Key Cleared', 'The app will now use the default shared Gemini API key.');
-    }
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      const cleanKey = apiKey.trim().replace(/\s+/g, '');
+      const updatedProfile = {
+        ...(profile || {}),
+        name: name.trim() || 'Explorer',
+        gender,
+        age: Number(age),
+        weight_kg: Number(weightKg),
+        height_cm: Number(heightCm),
+        activity_level: activityLevel,
+        goal_type: goalType,
+        custom_api_key: cleanKey,
+      };
+      await saveProfile(updatedProfile, false);
+      if (cleanKey) {
+        Alert.alert(
+          'Gemini API Key Saved',
+          `Your personal Gemini API key (${cleanKey.length} characters) is active for AI meal scanning, text parsing, and coaching.`
+        );
+      } else {
+        Alert.alert('API Key Cleared', 'The app will now use the default shared Gemini API key.');
+      }
+    } catch (error) { Alert.alert('Save Failed', error.message); }
+    finally { setIsSaving(false); }
   };
 
   const handleClearCustomApiKey = () => {
@@ -312,9 +348,9 @@ export default function SettingsScreen() {
               ...(profile || {}),
               name: name.trim() || 'Explorer',
               gender,
-              age: Number(age) || 25,
-              weight_kg: Number(weightKg) || 70,
-              height_cm: Number(heightCm) || 175,
+              age: Number(age),
+              weight_kg: Number(weightKg),
+              height_cm: Number(heightCm),
               activity_level: activityLevel,
               goal_type: goalType,
               custom_api_key: '',
@@ -412,7 +448,7 @@ export default function SettingsScreen() {
           />
 
           <View style={styles.genderRow}>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={[styles.genderBtn, gender === 'male' && styles.genderBtnActive]}
               onPress={() => setGender('male')}
             >
@@ -426,7 +462,7 @@ export default function SettingsScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={[styles.genderBtn, gender === 'female' && styles.genderBtnActive]}
               onPress={() => setGender('female')}
             >
@@ -477,7 +513,7 @@ export default function SettingsScreen() {
             {ACTIVITY_LEVELS.map((act) => {
               const isSelected = activityLevel === act.key;
               return (
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button"
                   key={act.key}
                   style={[styles.optionCard, isSelected && styles.optionCardActive]}
                   onPress={() => setActivityLevel(act.key)}
@@ -502,7 +538,7 @@ export default function SettingsScreen() {
             {GOAL_TYPES.map((g) => {
               const isSelected = goalType === g.key;
               return (
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button"
                   key={g.key}
                   style={[styles.optionCard, isSelected && styles.optionCardActive]}
                   onPress={() => setGoalType(g.key)}
@@ -521,6 +557,13 @@ export default function SettingsScreen() {
             })}
           </View>
 
+          <Button
+            title="Save Profile"
+            onPress={() => handleSaveProfile(false)}
+            loading={isSaving}
+            variant="outline"
+            style={{ marginTop: 8 }}
+          />
           <Button
             title="Auto-Recalculate & Apply Goals"
             onPress={() => handleSaveProfile(true)}
@@ -616,6 +659,7 @@ export default function SettingsScreen() {
             <Switch
               value={notificationsEnabled}
               onValueChange={handleToggleNotifications}
+              disabled={notificationsBusy}
               trackColor={{ false: colors.cardBorder, true: colors.sageBright }}
               thumbColor={Platform.OS === 'ios' ? '#ffffff' : (notificationsEnabled ? '#ffffff' : '#888888')}
               accessibilityLabel="Toggle daily meal and water reminders"
@@ -685,7 +729,7 @@ export default function SettingsScreen() {
             rightAccessory={
               <View style={styles.inputAccessoryRow}>
                 {apiKey ? (
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button"
                     onPress={() => setApiKey('')}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={styles.keyActionIconBtn}
@@ -693,7 +737,7 @@ export default function SettingsScreen() {
                     <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
                   </TouchableOpacity>
                 ) : null}
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button"
                   onPress={() => setShowApiKey(!showApiKey)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={styles.keyActionIconBtn}
@@ -730,7 +774,7 @@ export default function SettingsScreen() {
           </View>
 
           {profile?.custom_api_key ? (
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={styles.clearKeyLink}
               onPress={handleClearCustomApiKey}
               activeOpacity={0.7}
@@ -739,7 +783,7 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           ) : null}
 
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.aiStudioLink}
             onPress={() => Linking.openURL('https://aistudio.google.com/app/apikey')}
             activeOpacity={0.8}
@@ -753,7 +797,7 @@ export default function SettingsScreen() {
         <Text style={styles.sectionHeading}>Data & App Management</Text>
         <Card style={styles.card}>
           {/* Export JSON */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.actionRow}
             onPress={handleExportJSON}
             activeOpacity={0.7}
@@ -768,7 +812,7 @@ export default function SettingsScreen() {
           <View style={styles.actionDivider} />
 
           {/* Import JSON */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.actionRow}
             onPress={() => setImportModalVisible(true)}
             activeOpacity={0.7}
@@ -783,7 +827,7 @@ export default function SettingsScreen() {
           <View style={styles.actionDivider} />
 
           {/* Reload Demo */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.actionRow}
             onPress={handleResetDemoData}
             activeOpacity={0.7}
@@ -798,7 +842,7 @@ export default function SettingsScreen() {
           <View style={styles.actionDivider} />
 
           {/* Clear Logs */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.actionRow}
             onPress={handleClearAllLogs}
             activeOpacity={0.7}
@@ -813,7 +857,7 @@ export default function SettingsScreen() {
           <View style={styles.actionDivider} />
 
           {/* Factory Reset */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.actionRow}
             onPress={handleFactoryReset}
             activeOpacity={0.7}
@@ -839,7 +883,7 @@ export default function SettingsScreen() {
             <View style={styles.modalSheet}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Import Backup JSON</Text>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button"
                   onPress={() => setImportModalVisible(false)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
@@ -1251,4 +1295,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

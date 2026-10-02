@@ -1,4 +1,5 @@
 import { useProfileStore } from '../stores/useProfileStore';
+import { normalizeAnalysis, normalizeMealPlan } from './validation';
 
 // Models: 3.5 Flash-Lite as Primary (ultra-fast sub-second inference), Flash-Lite-Latest as Fallback
 const PRIMARY_MODEL = 'gemini-3.5-flash-lite';
@@ -121,7 +122,7 @@ export function parseAndFormatGeminiError(errorInput, status = 0) {
 
   try {
     const parsed = typeof errorInput === 'string' ? JSON.parse(errorInput) : errorInput;
-    message = parsed?.error?.message || '';
+    message = parsed?.error?.message || parsed?.message || '';
     statusStr = parsed?.error?.status || '';
   } catch {
     message = typeof errorInput === 'string' ? errorInput : errorInput?.message || '';
@@ -223,9 +224,12 @@ export async function testGeminiApiKey(candidateKey) {
     contents: [{ role: 'user', parts: [{ text: 'Reply with only the word: OK' }] }],
     generationConfig: { maxOutputTokens: 5, temperature: 0.1 },
   };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
 
   try {
     const response = await fetch(url, {
+      signal: controller.signal,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -242,6 +246,7 @@ export async function testGeminiApiKey(candidateKey) {
       if (response.status === 404 || response.status === 503) {
         const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_MODEL}:generateContent`;
         const fallbackRes = await fetch(fallbackUrl, {
+          signal: controller.signal,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -276,8 +281,10 @@ export async function testGeminiApiKey(candidateKey) {
   } catch (err) {
     return {
       success: false,
-      error: err?.message || 'Network error connecting to Gemini API.',
+      error: err?.name === 'AbortError' ? 'Connection test timed out. Please check your internet connection.' : err?.message || 'Network error connecting to Gemini API.',
     };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -339,8 +346,6 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
       const errorText = await response.text();
 
@@ -386,6 +391,7 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     const candidateText = textParts.length > 0
       ? textParts.map((p) => p.text).join('')
       : (parts[0]?.text || '');
+    if (!candidateText.trim()) throw new Error('AI returned an empty response. Please try again.');
     return candidateText;
   } catch (error) {
     clearTimeout(timeoutId);
@@ -423,6 +429,8 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     }
 
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -575,7 +583,7 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
     if (parsed.is_no_food) {
       throw new Error('No food detected in photo. Please ensure food or a meal is clearly visible.');
     }
-    return parsed;
+    return normalizeAnalysis(parsed);
   } catch (err) {
     if (err.message && err.message.includes('No food detected')) {
       throw err;
@@ -630,7 +638,7 @@ Extract the nutrition data and return ONLY a valid JSON object:
     responseSchema: NUTRITION_LABEL_SCHEMA,
   });
   try {
-    return JSON.parse(cleanJsonText(rawOutput));
+    return normalizeAnalysis(JSON.parse(cleanJsonText(rawOutput)));
   } catch (err) {
     console.error('Failed to parse Gemini label response:', rawOutput);
     throw new Error('Could not clearly read the label. Make sure the Nutrition Facts table is well-lit.');
@@ -714,7 +722,7 @@ Return ONLY a valid JSON object:
     if (Array.isArray(parsed.health_tips)) {
       parsed.health_tips = parsed.health_tips.join(' ');
     }
-    return parsed;
+    return normalizeAnalysis(parsed);
   } catch (err) {
     if (err.message && err.message.includes('Not a recognizable food')) {
       throw err;
@@ -795,17 +803,18 @@ export function sanitizeChatHistory(history, newTurnText, maxTokenBudget = 8000)
   let lastRole = null;
 
   // Filter valid non-empty messages
-  const cleanHistory = (history || []).filter((m) => (m?.text || '').trim().length > 0);
+  const cleanHistory = (history || []).filter((m) => typeof m?.text === 'string' && m.text.trim().length > 0);
 
   // Count backwards from the most recent turn
   let currentTokens = estimateTokens(newTurnText || '');
+  if (currentTokens > maxTokenBudget) throw new Error('Your message is too long. Please shorten it and try again.');
   const budgetedTurns = [];
 
   for (let i = cleanHistory.length - 1; i >= 0; i--) {
     const msg = cleanHistory[i];
     const text = (msg?.text || '').trim();
     const tokens = estimateTokens(text);
-    if (currentTokens + tokens > maxTokenBudget && budgetedTurns.length > 0) {
+    if (currentTokens + tokens > maxTokenBudget) {
       break;
     }
     budgetedTurns.unshift(msg);
@@ -860,6 +869,7 @@ export async function sendNutritionistChatMessage(chatHistory, userMessage, user
 
   const systemPrompt = `You are "Sage", a thoughtful, calm, and evidence-based AI nutrition coach inside the CalorieSnap Pro app, specializing in Pakistani, South Asian, and Global wellness.
 User Profile:
+- Log date being reviewed: ${userContext.date || 'today'}
 - Name: ${profile.name || 'Friend'}
 - Age: ${profile.age || 25}, Gender: ${profile.gender || 'Not specified'}, Weight: ${profile.weight_kg || 70}kg, Height: ${profile.height_cm || 175}cm
 - Primary Goal: ${profile.goal_type || 'Healthy Balance'} (Target: ${goals.calories || 2000} kcal/day)
@@ -969,7 +979,7 @@ Return ONLY valid JSON with this structure:
     jsonMode: true,
   });
   try {
-    return JSON.parse(cleanJsonText(rawOutput));
+    return normalizeMealPlan(JSON.parse(cleanJsonText(rawOutput)));
   } catch (err) {
     console.error('Failed to parse meal plan JSON:', rawOutput);
     throw new Error('Could not generate meal plan. Please try again.');
@@ -1018,7 +1028,7 @@ Return ONLY valid JSON with this exact schema:
     const duration = Math.max(1, Math.min(720, Math.round(Number(parsed.duration_minutes) || 30)));
     const met = Math.max(1.5, Math.min(20, Number(parsed.met) || 4.0));
     const calculatedCals = Math.round(((met * 3.5 * weight) / 200) * duration);
-    const calories = Number(parsed.calories_burned) > 0 ? Math.round(Number(parsed.calories_burned)) : calculatedCals;
+    const calories = calculatedCals;
 
     const intensity = ['low', 'moderate', 'high'].includes(parsed.intensity) ? parsed.intensity : 'moderate';
     const isWalking = parsed.category === 'walking' || parsed.exercise_name?.toLowerCase().includes('walk');
@@ -1039,5 +1049,3 @@ Return ONLY valid JSON with this exact schema:
     throw new Error('Could not estimate exercise. Please enter details manually.');
   }
 }
-
-

@@ -1,7 +1,7 @@
 // src/services/imageService.js
 // Permanent image persistence helper to avoid OS cache purges on Native and IndexedDB on Web
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 const MEALS_DIR = `${FileSystem.documentDirectory}meals/`;
@@ -60,9 +60,7 @@ async function saveImageToIndexedDB(uri) {
         const store = tx.objectStore(STORE_NAME);
         const req = store.put(blob, key);
 
-        req.onsuccess = () => {
-          resolve(`indexeddb://${key}`);
-        };
+        tx.oncomplete = () => { db.close(); resolve(`indexeddb://${key}`); };
         req.onerror = (err) => {
           // Gap A: Handle QuotaExceededError or private browsing restrictions
           console.warn('IndexedDB write error (quota or storage disabled):', err);
@@ -108,7 +106,7 @@ export async function resolveImageUriAsync(uri) {
 
   try {
     const db = await openWebDB();
-    if (!db) return uri;
+    if (!db) return null;
     const cleanKey = uri.replace('indexeddb://', '');
 
     return new Promise((resolve) => {
@@ -148,7 +146,9 @@ export async function persistImageAsync(tempUri) {
     if (tempUri.startsWith('indexeddb://') || (tempUri.startsWith('http') && !tempUri.startsWith('blob:'))) {
       return tempUri;
     }
-    return await saveImageToIndexedDB(tempUri);
+    const savedUri = await saveImageToIndexedDB(tempUri);
+    if (!savedUri) throw new Error('Could not store this photo. Free some device storage and try again.');
+    return savedUri;
   }
 
   // Native iOS / Android Storage
@@ -174,8 +174,8 @@ export async function persistImageAsync(tempUri) {
 
     return permanentUri;
   } catch (err) {
-    console.warn('Failed to persist image to permanent storage, using original URI:', err);
-    return tempUri;
+    console.warn('Failed to persist image to permanent storage:', err);
+    throw new Error('Could not store this photo permanently. Please try again.');
   }
 }
 

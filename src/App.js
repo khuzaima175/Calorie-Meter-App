@@ -2,7 +2,7 @@
 // CalorieSnap Pro — App Bootstrapper & Root Component
 
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { initDatabase, getTodayString } from './services/databaseService';
@@ -12,6 +12,7 @@ import TabNavigator from './navigation/TabNavigator';
 import LoadingShimmer from './components/LoadingShimmer';
 import ErrorBoundary from './components/ErrorBoundary';
 import OfflineBanner from './components/OfflineBanner';
+import Button from './components/Button';
 import { colors } from './theme/colors';
 
 // Ensure full viewport on Web browser
@@ -38,8 +39,12 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 
 function AppBootstrapper() {
   const [isReady, setIsReady] = useState(false);
+  const [bootError, setBootError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let mounted = true;
+    setBootError(null);
     async function bootstrap() {
       try {
         // 1. Initialize SQLite Database & run schema migrations
@@ -50,17 +55,26 @@ function AppBootstrapper() {
 
         // 3. Hydrate today's nutrition logs into Zustand state
         await useNutritionStore.getState().refreshData(getTodayString());
+        const loadError = useNutritionStore.getState().error;
+        if (loadError) throw new Error(loadError);
 
-        setIsReady(true);
+        if (mounted) setIsReady(true);
       } catch (err) {
         console.error('Failed during app bootstrapping:', err);
-        // Even on error, proceed to render UI
-        setIsReady(true);
+        if (mounted) setBootError(err.message || 'Could not load your saved data.');
       }
     }
 
     bootstrap();
-  }, []);
+    return () => { mounted = false; };
+  }, [attempt]);
+
+  if (bootError) {
+    return <View style={styles.bootContainer}>
+      <Text style={{ color: colors.textPrimary, padding: 24, textAlign: 'center' }}>{bootError}</Text>
+      <Button title="Retry Loading" onPress={() => setAttempt((value) => value + 1)} />
+    </View>;
+  }
 
   if (!isReady) {
     return (
@@ -113,4 +127,3 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 });
-

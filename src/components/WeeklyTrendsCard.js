@@ -1,3 +1,4 @@
+import { useNutritionStore } from '../stores/useNutritionStore';
 // src/components/WeeklyTrendsCard.js
 // 7-day nutritional trend visualizer with daily averages, target goal line, and deficit/surplus indicators
 
@@ -11,11 +12,13 @@ import Card from './Card';
 import { colors, radius, typography } from '../theme/colors';
 
 export default function WeeklyTrendsCard({ selectedDate, targetCalories = 2000, onSelectDate }) {
+  const dataRevision = useNutritionStore((s) => s.dataRevision);
   const [weeklyData, setWeeklyData] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
+    setLoading(true);
     async function loadTrends() {
       try {
         const data = await get7DaySummary(selectedDate);
@@ -25,13 +28,14 @@ export default function WeeklyTrendsCard({ selectedDate, targetCalories = 2000, 
         }
       } catch (err) {
         console.warn('Failed to load weekly trends:', err);
+        if (isMounted) { setWeeklyData([]); setLoading(false); }
       }
     }
     loadTrends();
     return () => {
       isMounted = false;
     };
-  }, [selectedDate]);
+  }, [selectedDate, dataRevision]);
 
   if (loading || !weeklyData || weeklyData.length === 0) {
     return null;
@@ -128,8 +132,8 @@ export default function WeeklyTrendsCard({ selectedDate, targetCalories = 2000, 
         />
         <Text style={styles.footerText}>
           {diffFromTarget <= 0
-            ? `${Math.abs(diffFromTarget)} kcal/day average deficit over past 7 days.`
-            : `${diffFromTarget} kcal/day average surplus over past 7 days.`}
+            ? `${Math.abs(diffFromTarget)} kcal/day below target across this 7-day log. Unlogged days count as zero.`
+            : `${diffFromTarget} kcal/day above target across this 7-day log.`}
         </Text>
       </View>
     </Card>

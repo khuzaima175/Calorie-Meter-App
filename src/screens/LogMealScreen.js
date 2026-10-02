@@ -1,3 +1,4 @@
+import { Alert } from '../services/alertService';
 // src/screens/LogMealScreen.js
 // 5-Tab Smart Meal Logger: AI Photo, Text NLP, Nutrition Label OCR, Barcode Scanner, & Manual Entry
 
@@ -9,7 +10,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Image,
   Animated,
 } from 'react-native';
@@ -60,6 +60,8 @@ export default function LogMealScreen({ navigation }) {
   const [capturedImageUri, setCapturedImageUri] = useState(null);
   const [capturedImageUris, setCapturedImageUris] = useState([]);
   const barcodeReqIdRef = useRef(0);
+  const mounted = useRef(true);
+  const saveLock = useRef(false);
   const scanAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -103,11 +105,13 @@ export default function LogMealScreen({ navigation }) {
   const [isEstimatingManual, setIsEstimatingManual] = useState(false);
 
   const handleEstimateManual = async () => {
+    if (isSaving || isEstimatingManual) return;
     const query = manualName.trim();
     if (!query) {
       Alert.alert('Missing Name', 'Please type a food or meal name first.');
       return;
     }
+    const request = ++barcodeReqIdRef.current;
     setIsEstimatingManual(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
@@ -117,6 +121,7 @@ export default function LogMealScreen({ navigation }) {
       const result = await parseMealDescription(fullQuery, {
         mealPeriod: { mealType: manualMealType, label: manualMealType, timeStr: '' },
       });
+      if (request !== barcodeReqIdRef.current) return;
       if (result) {
         if (result.calories != null) setManualCalories(String(Math.round(result.calories)));
         if (result.protein != null) setManualProtein(String(Math.round(result.protein)));
@@ -128,9 +133,10 @@ export default function LogMealScreen({ navigation }) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
     } catch (err) {
+      if (request !== barcodeReqIdRef.current) return;
       Alert.alert('Estimation Failed', err?.message || 'Could not auto-calculate. Please enter calories manually.');
     } finally {
-      setIsEstimatingManual(false);
+      if (request === barcodeReqIdRef.current) setIsEstimatingManual(false);
     }
   };
 
@@ -138,7 +144,13 @@ export default function LogMealScreen({ navigation }) {
     (activeTab === 'photo' || activeTab === 'label' || activeTab === 'barcode') &&
     !analysisResult;
 
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; barcodeReqIdRef.current++; };
+  }, []);
+
   const handleTabChange = (tabKey) => {
+    if (isProcessing || isSaving || isEstimatingManual) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setActiveTab(tabKey);
     setAnalysisResult(null);
@@ -149,6 +161,7 @@ export default function LogMealScreen({ navigation }) {
   // 1. Photo Analysis Handler (supports multi-image & Pakistani meal context)
   const handleCapturePhoto = async (capturePayload) => {
     const { uri, base64, mimeType, photos = [], userNote = '', mealPeriod } = capturePayload;
+    const currentReqId = ++barcodeReqIdRef.current;
     setIsProcessing(true);
     setStatusMessage('Analyzing Pakistani / Desi meal with Gemini AI...');
 
@@ -164,8 +177,10 @@ export default function LogMealScreen({ navigation }) {
         mealPeriod,
       });
       console.log(`[Perf] 🌐 Gemini Vision API roundtrip & inference: ${Date.now() - tStart}ms`);
+      if (currentReqId !== barcodeReqIdRef.current) return;
       setAnalysisResult(result);
     } catch (err) {
+      if (currentReqId !== barcodeReqIdRef.current) return;
       Alert.alert(
         'Analysis Failed',
         err.message || 'Could not analyze photo. Please try again or type the meal.'
@@ -173,6 +188,7 @@ export default function LogMealScreen({ navigation }) {
       setCapturedImageUri(null);
       setCapturedImageUris([]);
     } finally {
+      if (currentReqId !== barcodeReqIdRef.current) return;
       setIsProcessing(false);
       setStatusMessage('');
     }
@@ -188,6 +204,7 @@ export default function LogMealScreen({ navigation }) {
       return;
     }
 
+    const currentReqId = ++barcodeReqIdRef.current;
     setIsProcessing(true);
     setStatusMessage('Estimating macros with Gemini AI...');
     const tStart = Date.now();
@@ -195,13 +212,16 @@ export default function LogMealScreen({ navigation }) {
     try {
       const result = await parseMealDescription(textDescription.trim());
       console.log(`[Perf] 🌐 Gemini Text API roundtrip & inference: ${Date.now() - tStart}ms`);
+      if (currentReqId !== barcodeReqIdRef.current) return;
       setAnalysisResult(result);
     } catch (err) {
+      if (currentReqId !== barcodeReqIdRef.current) return;
       Alert.alert(
         'Parsing Failed',
         err.message || 'Could not calculate macros. Please try again.'
       );
     } finally {
+      if (currentReqId !== barcodeReqIdRef.current) return;
       setIsProcessing(false);
       setStatusMessage('');
     }
@@ -209,6 +229,7 @@ export default function LogMealScreen({ navigation }) {
 
   // 3. Label OCR Handler
   const handleCaptureLabel = async ({ uri, base64, mimeType }) => {
+    const currentReqId = ++barcodeReqIdRef.current;
     setIsProcessing(true);
     setStatusMessage('Reading Nutrition Facts table...');
     setCapturedImageUri(uri);
@@ -217,14 +238,17 @@ export default function LogMealScreen({ navigation }) {
     try {
       const result = await analyzeNutritionLabel(base64, mimeType);
       console.log(`[Perf] 🌐 Gemini Label OCR API roundtrip & inference: ${Date.now() - tStart}ms`);
+      if (currentReqId !== barcodeReqIdRef.current) return;
       setAnalysisResult(result);
     } catch (err) {
+      if (currentReqId !== barcodeReqIdRef.current) return;
       Alert.alert(
         'OCR Failed',
         err.message || 'Could not read nutrition facts. Make sure label is in clear view.'
       );
       setCapturedImageUri(null);
     } finally {
+      if (currentReqId !== barcodeReqIdRef.current) return;
       setIsProcessing(false);
       setStatusMessage('');
     }
@@ -259,7 +283,7 @@ export default function LogMealScreen({ navigation }) {
 
   // 5. Manual Save Handler (with double-tap guard and strict bounds validation)
   const handleSaveManual = async () => {
-    if (isSaving || isEstimatingManual) return;
+    if (saveLock.current || isSaving || isEstimatingManual) return;
 
     if (!manualName.trim()) {
       Alert.alert('Missing Name', 'Please enter a food or meal name.');
@@ -267,15 +291,17 @@ export default function LogMealScreen({ navigation }) {
     }
 
     let calNum = Number(manualCalories);
-    let protNum = Number(manualProtein) || 0;
-    let carbsNum = Number(manualCarbs) || 0;
-    let fatNum = Number(manualFat) || 0;
+    let protNum = Number(manualProtein);
+    let carbsNum = Number(manualCarbs);
+    let fatNum = Number(manualFat);
     let finalPortion = manualPortion.trim() || '1 serving';
 
+    const targetDate = useNutritionStore.getState().selectedDate;
+    saveLock.current = true;
     setIsSaving(true);
 
     // If calories not entered, auto-calculate with Gemini AI on the fly
-    if (isNaN(calNum) || calNum <= 0) {
+    if (manualCalories.trim() === '') {
       try {
         const fullQuery = finalPortion && finalPortion !== '1 serving'
           ? `${manualName.trim()} (${finalPortion})`
@@ -283,7 +309,8 @@ export default function LogMealScreen({ navigation }) {
         const aiResult = await parseMealDescription(fullQuery, {
           mealPeriod: { mealType: manualMealType, label: manualMealType, timeStr: '' },
         });
-        if (aiResult && aiResult.calories > 0) {
+        if (!mounted.current) { saveLock.current = false; return; }
+        if (aiResult && Number.isFinite(aiResult.calories) && aiResult.calories >= 0) {
           calNum = Math.round(aiResult.calories);
           protNum = Math.round(aiResult.protein || 0);
           carbsNum = Math.round(aiResult.carbs || 0);
@@ -291,24 +318,29 @@ export default function LogMealScreen({ navigation }) {
           if (aiResult.portion) finalPortion = aiResult.portion;
         } else {
           Alert.alert('Could Not Estimate', 'Please enter calories manually.');
-          setIsSaving(false);
+          saveLock.current = false;
+          if (mounted.current) setIsSaving(false);
           return;
         }
       } catch (aiErr) {
+        if (!mounted.current) { saveLock.current = false; return; }
         Alert.alert('Estimation Failed', aiErr?.message || 'Could not auto-calculate calories.');
-        setIsSaving(false);
+        saveLock.current = false;
+        if (mounted.current) setIsSaving(false);
         return;
       }
     }
 
-    if (calNum > 10000) {
-      Alert.alert('Invalid Calories', 'Please enter realistic calories between 1 and 10,000.');
-      setIsSaving(false);
+    if (!Number.isFinite(calNum) || calNum < 0 || calNum > 10000) {
+      Alert.alert('Invalid Calories', 'Please enter realistic calories between 0 and 10,000.');
+      saveLock.current = false;
+      if (mounted.current) setIsSaving(false);
       return;
     }
-    if (protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
+    if (![protNum, carbsNum, fatNum].every(Number.isFinite) || protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
       Alert.alert('Invalid Macros', 'Macronutrient values must be realistic positive numbers.');
-      setIsSaving(false);
+      saveLock.current = false;
+      if (mounted.current) setIsSaving(false);
       return;
     }
 
@@ -316,6 +348,7 @@ export default function LogMealScreen({ navigation }) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       await addMeal({
+        date: targetDate,
         name: manualName.trim(),
         meal_type: manualMealType,
         portion: finalPortion,
@@ -325,32 +358,37 @@ export default function LogMealScreen({ navigation }) {
         fat: fatNum,
       });
 
-      navigation.navigate('Dashboard');
+      if (mounted.current) navigation.navigate('Dashboard');
     } catch (err) {
-      Alert.alert('Save Failed', err.message || 'Could not save meal.');
+      if (mounted.current) Alert.alert('Save Failed', err.message || 'Could not save meal.');
     } finally {
-      setIsSaving(false);
+      saveLock.current = false;
+      if (mounted.current) setIsSaving(false);
     }
   };
 
   // Save Confirmed AI Analysis Result (with double-tap guard)
   const handleSaveAnalysisResult = async (finalMealData) => {
-    if (isSaving) return;
+    if (saveLock.current || isSaving) return;
+    saveLock.current = true;
+    const targetDate = useNutritionStore.getState().selectedDate;
     setIsSaving(true);
     try {
       if (finalMealData.is_water) {
-        await logWater(finalMealData.water_ml || 250);
+        await logWater(finalMealData.water_ml ?? 250, targetDate);
       } else {
-        await addMeal(finalMealData);
+        await addMeal({ ...finalMealData, date: targetDate });
       }
+      if (!mounted.current) return;
       setAnalysisResult(null);
       setCapturedImageUri(null);
       setCapturedImageUris([]);
       navigation.navigate('Dashboard');
     } catch (err) {
-      Alert.alert('Save Failed', err.message || 'Could not save meal data.');
+      if (mounted.current) Alert.alert('Save Failed', err.message || 'Could not save meal data.');
     } finally {
-      setIsSaving(false);
+      saveLock.current = false;
+      if (mounted.current) setIsSaving(false);
     }
   };
 
@@ -426,7 +464,7 @@ export default function LogMealScreen({ navigation }) {
             {TABS.map((tab) => {
               const isActive = activeTab === tab.key;
               return (
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button"
                   key={tab.key}
                   style={[
                     styles.segmentedTabBtn,
@@ -482,7 +520,7 @@ export default function LogMealScreen({ navigation }) {
         {/* Header Title with Back Button */}
         <View style={styles.header}>
           <View style={styles.formHeaderRow}>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={styles.formBackBtn}
               onPress={() => {
                 if (analysisResult) {
@@ -517,7 +555,7 @@ export default function LogMealScreen({ navigation }) {
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.key;
                 return (
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button"
                     key={tab.key}
                     style={[styles.segmentedTabBtnForm, isActive && styles.segmentedTabBtnFormActive]}
                     onPress={() => handleTabChange(tab.key)}
@@ -590,7 +628,7 @@ export default function LogMealScreen({ navigation }) {
                     automatically.
                   </Text>
 
-                  <Input
+                  <Input editable={!(isProcessing || isSaving || isEstimatingManual)}
                     placeholder="e.g. 2 eggs scrambled in butter with 2 slices whole wheat toast and half an avocado..."
                     value={textDescription}
                     onChangeText={setTextDescription}
@@ -609,7 +647,7 @@ export default function LogMealScreen({ navigation }) {
                       '1 cup Daal Chana + 1 Tandoori Roti',
                       '1 Chicken Shami Bun Kabab with Mint Chutney',
                     ].map((example, idx) => (
-                      <TouchableOpacity
+                      <TouchableOpacity accessibilityRole="button"
                         key={idx}
                         style={styles.exampleChip}
                         onPress={() => setTextDescription(example)}
@@ -646,7 +684,7 @@ export default function LogMealScreen({ navigation }) {
                     {MEAL_TYPES.map((t) => {
                       const isSelected = manualMealType === t.key;
                       return (
-                        <TouchableOpacity
+                        <TouchableOpacity accessibilityRole="button"
                           key={t.key}
                           style={[styles.typePill, isSelected && styles.typePillSelected]}
                           onPress={() => setManualMealType(t.key)}
@@ -664,7 +702,7 @@ export default function LogMealScreen({ navigation }) {
                     })}
                   </View>
 
-                  <Input
+                  <Input editable={!(isProcessing || isSaving || isEstimatingManual)}
                     label="Meal / Food Name"
                     placeholder="e.g. Oatmeal with Berries"
                     value={manualName}
@@ -704,14 +742,14 @@ export default function LogMealScreen({ navigation }) {
                     </Text>
                   </TouchableOpacity>
 
-                  <Input
+                  <Input editable={!(isProcessing || isSaving || isEstimatingManual)}
                     label="Portion"
                     placeholder="e.g. 1 bowl (250g)"
                     value={manualPortion}
                     onChangeText={setManualPortion}
                   />
 
-                  <Input
+                  <Input editable={!(isProcessing || isSaving || isEstimatingManual)}
                     label="Calories (kcal) *"
                     placeholder="0"
                     value={manualCalories}
@@ -722,7 +760,7 @@ export default function LogMealScreen({ navigation }) {
 
                   <View style={styles.macroGrid}>
                     <View style={styles.macroCol}>
-                      <Input
+                      <Input editable={!(isProcessing || isSaving || isEstimatingManual)}
                         label="Protein"
                         placeholder="0"
                         value={manualProtein}
@@ -732,7 +770,7 @@ export default function LogMealScreen({ navigation }) {
                       />
                     </View>
                     <View style={styles.macroCol}>
-                      <Input
+                      <Input editable={!(isProcessing || isSaving || isEstimatingManual)}
                         label="Carbs"
                         placeholder="0"
                         value={manualCarbs}
@@ -742,7 +780,7 @@ export default function LogMealScreen({ navigation }) {
                       />
                     </View>
                     <View style={styles.macroCol}>
-                      <Input
+                      <Input editable={!(isProcessing || isSaving || isEstimatingManual)}
                         label="Fat"
                         placeholder="0"
                         value={manualFat}

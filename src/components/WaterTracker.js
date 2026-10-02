@@ -1,3 +1,4 @@
+import { Alert } from '../services/alertService';
 // src/components/WaterTracker.js
 // Interactive Water Intake Tracker with liquid wave physics, droplet animation, and haptics
 
@@ -55,12 +56,12 @@ export default function WaterTracker({
   const handleAdd = (amount) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     triggerDropletAnimation();
-    onAddWater(amount);
+    Promise.resolve(onAddWater(amount)).catch((error) => Alert.alert('Water Log Failed', error.message));
   };
 
   const handleUndo = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    onUndoWater();
+    Promise.resolve(onUndoWater()).catch((error) => Alert.alert('Undo Failed', error.message));
   };
 
   const animatedHeight = fillAnim.interpolate({

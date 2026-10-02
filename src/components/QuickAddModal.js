@@ -1,7 +1,7 @@
 // src/components/QuickAddModal.js
 // Fast manual calorie & macro logging modal
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -33,6 +33,7 @@ export default function QuickAddModal({
   onSave,
   initialMealType = 'snack',
   editMeal = null,
+  date,
 }) {
   const [mealType, setMealType] = useState(editMeal?.meal_type || initialMealType);
   const [name, setName] = useState(editMeal?.name || '');
@@ -45,8 +46,13 @@ export default function QuickAddModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isEstimating, setIsEstimating] = useState(false);
 
+  const session = useRef(0);
+  const operationPending = useRef(false);
+
   // Reset form when modal opens or editMeal changes
   useEffect(() => {
+    session.current++;
+    operationPending.current = false;
     if (visible) {
       setMealType(editMeal?.meal_type || initialMealType || 'breakfast');
       setName(editMeal?.name || '');
@@ -59,14 +65,18 @@ export default function QuickAddModal({
       setIsSaving(false);
       setIsEstimating(false);
     }
+    return () => { session.current++; };
   }, [visible, editMeal, initialMealType]);
 
   const handleEstimateNutrition = async () => {
+    if (operationPending.current || isSaving || isEstimating) return;
+    const request = session.current;
     const query = name.trim();
     if (!query) {
       setError('Please type a food or meal name first');
       return;
     }
+    operationPending.current = true;
     setIsEstimating(true);
     setError('');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -77,6 +87,7 @@ export default function QuickAddModal({
       const result = await parseMealDescription(fullQuery, {
         mealPeriod: { mealType, label: mealType, timeStr: '' },
       });
+      if (request !== session.current) return;
       if (result) {
         if (result.calories != null) setCalories(String(Math.round(result.calories)));
         if (result.protein != null) setProtein(String(Math.round(result.protein)));
@@ -88,14 +99,16 @@ export default function QuickAddModal({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
     } catch (err) {
+      if (request !== session.current) return;
       setError(err?.message || 'Could not auto-estimate. Please check food name or enter manually.');
     } finally {
-      setIsEstimating(false);
+      if (request === session.current) { operationPending.current = false; setIsEstimating(false); }
     }
   };
 
   const handleSave = async () => {
-    if (isSaving || isEstimating) return;
+    if (operationPending.current || isSaving || isEstimating) return;
+    const request = session.current;
 
     if (!name.trim()) {
       setError('Please enter a meal name');
@@ -103,16 +116,17 @@ export default function QuickAddModal({
     }
 
     let calNum = Number(calories);
-    let protNum = Number(protein) || 0;
-    let carbsNum = Number(carbs) || 0;
-    let fatNum = Number(fat) || 0;
+    let protNum = Number(protein);
+    let carbsNum = Number(carbs);
+    let fatNum = Number(fat);
     let finalPortion = portion.trim() || '1 serving';
 
+    operationPending.current = true;
     setIsSaving(true);
     setError('');
 
     // If calories not entered, auto-calculate with Gemini AI on the fly
-    if (isNaN(calNum) || calNum <= 0) {
+    if (calories.trim() === '') {
       try {
         const fullQuery = finalPortion && finalPortion !== '1 serving'
           ? `${name.trim()} (${finalPortion})`
@@ -120,7 +134,8 @@ export default function QuickAddModal({
         const aiResult = await parseMealDescription(fullQuery, {
           mealPeriod: { mealType, label: mealType, timeStr: '' },
         });
-        if (aiResult && aiResult.calories > 0) {
+        if (request !== session.current) return;
+        if (aiResult && Number.isFinite(aiResult.calories) && aiResult.calories >= 0) {
           calNum = Math.round(aiResult.calories);
           protNum = Math.round(aiResult.protein || 0);
           carbsNum = Math.round(aiResult.carbs || 0);
@@ -128,24 +143,25 @@ export default function QuickAddModal({
           if (aiResult.portion) finalPortion = aiResult.portion;
         } else {
           setError('Could not calculate calories. Please enter calories manually.');
-          setIsSaving(false);
+          operationPending.current = false; setIsSaving(false);
           return;
         }
       } catch (aiErr) {
+        if (request !== session.current) return;
         setError(aiErr?.message || 'Could not auto-calculate. Please enter calories manually.');
-        setIsSaving(false);
+        operationPending.current = false; setIsSaving(false);
         return;
       }
     }
 
-    if (calNum > 10000) {
-      setError('Please enter realistic calories (1 - 10,000)');
-      setIsSaving(false);
+    if (!Number.isFinite(calNum) || calNum < 0 || calNum > 10000) {
+      setError('Please enter realistic calories (0 - 10,000)');
+      operationPending.current = false; setIsSaving(false);
       return;
     }
-    if (protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
+    if (![protNum, carbsNum, fatNum].every(Number.isFinite) || protNum < 0 || protNum > 1000 || carbsNum < 0 || carbsNum > 1000 || fatNum < 0 || fatNum > 1000) {
       setError('Macros must be positive realistic numbers');
-      setIsSaving(false);
+      operationPending.current = false; setIsSaving(false);
       return;
     }
 
@@ -153,6 +169,7 @@ export default function QuickAddModal({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       await onSave({
+        date,
         ...(editMeal || {}),
         id: editMeal?.id,
         name: name.trim(),
@@ -165,11 +182,12 @@ export default function QuickAddModal({
         timestamp: editMeal?.timestamp || new Date().toISOString(),
       });
 
-      onClose();
+      if (request === session.current) onClose();
     } catch (err) {
+      if (request !== session.current) return;
       setError(err?.message || 'Could not save meal.');
     } finally {
-      setIsSaving(false);
+      if (request === session.current) { operationPending.current = false; setIsSaving(false); }
     }
   };
 
@@ -178,7 +196,7 @@ export default function QuickAddModal({
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={() => { if (!isSaving && !isEstimating) onClose(); }}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -192,6 +210,9 @@ export default function QuickAddModal({
             </Text>
             <TouchableOpacity
               onPress={onClose}
+              disabled={isSaving || isEstimating}
+              accessibilityRole="button"
+              accessibilityLabel="Close meal form"
               style={styles.closeBtn}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -208,7 +229,7 @@ export default function QuickAddModal({
               {MEAL_TYPES.map((t) => {
                 const isSelected = mealType === t.key;
                 return (
-                  <TouchableOpacity
+                  <TouchableOpacity disabled={isSaving || isEstimating} accessibilityRole="button"
                     key={t.key}
                     style={[
                       styles.typePill,
@@ -230,7 +251,7 @@ export default function QuickAddModal({
             </View>
 
             {/* Inputs */}
-            <Input
+            <Input editable={!(isSaving || isEstimating)}
               label="Meal / Food Name"
               placeholder="e.g. Scrambled Eggs & Toast"
               value={name}
@@ -248,7 +269,7 @@ export default function QuickAddModal({
                 (!name.trim() || isEstimating) && styles.aiEstimateBtnDisabled,
               ]}
               onPress={handleEstimateNutrition}
-              disabled={!name.trim() || isEstimating}
+              disabled={!name.trim() || isEstimating || isSaving}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel="Calculate calories and macros with Gemini AI"
@@ -273,14 +294,14 @@ export default function QuickAddModal({
               </Text>
             </TouchableOpacity>
 
-            <Input
+            <Input editable={!(isSaving || isEstimating)}
               label="Portion / Size"
               placeholder="e.g. 2 eggs + 1 slice toast"
               value={portion}
               onChangeText={setPortion}
             />
 
-            <Input
+            <Input editable={!(isSaving || isEstimating)}
               label="Calories (kcal) *"
               placeholder="0"
               value={calories}
@@ -295,7 +316,7 @@ export default function QuickAddModal({
 
             <View style={styles.macroInputGrid}>
               <View style={styles.macroInputCol}>
-                <Input
+                <Input editable={!(isSaving || isEstimating)}
                   label="Protein"
                   placeholder="0"
                   value={protein}
@@ -305,7 +326,7 @@ export default function QuickAddModal({
                 />
               </View>
               <View style={styles.macroInputCol}>
-                <Input
+                <Input editable={!(isSaving || isEstimating)}
                   label="Carbs"
                   placeholder="0"
                   value={carbs}
@@ -315,7 +336,7 @@ export default function QuickAddModal({
                 />
               </View>
               <View style={styles.macroInputCol}>
-                <Input
+                <Input editable={!(isSaving || isEstimating)}
                   label="Fat"
                   placeholder="0"
                   value={fat}

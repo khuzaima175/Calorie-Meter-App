@@ -1,14 +1,16 @@
 // src/services/notificationService.js
 // Local notification manager for daily meal, hydration, and evening review reminders
 
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+const Notifications = Platform.OS === 'web' ? null : require('expo-notifications');
 
 // Configure notification presentation behavior
 if (Platform.OS !== 'web') {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
     }),
@@ -22,6 +24,12 @@ export async function requestNotificationPermissions() {
   if (Platform.OS === 'web') return false;
 
   try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Meal and hydration reminders',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -109,6 +117,7 @@ export async function scheduleDailyReminders() {
     return true;
   } catch (err) {
     console.warn('Failed to schedule daily reminders:', err);
+    await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
     return false;
   }
 }
@@ -122,5 +131,6 @@ export async function cancelAllReminders() {
     await Notifications.cancelAllScheduledNotificationsAsync();
   } catch (err) {
     console.warn('Failed to cancel reminders:', err);
+    throw err;
   }
 }

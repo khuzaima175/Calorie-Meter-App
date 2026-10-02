@@ -1,3 +1,4 @@
+import { numberInRange, validateDate, validateMeal, validateExercise, validateProfile, validateGoals, validateBackup } from './validation';
 import { Platform } from 'react-native';
 import { format, addDays, subDays } from 'date-fns';
 import { persistImageAsync, deletePersistedImageAsync } from './imageService';
@@ -13,6 +14,9 @@ if (!IS_WEB) {
 }
 
 let dbInstance = null;
+let initialization = null;
+let initialized = false;
+let committedWebStore = null;
 
 // Web In-Memory / LocalStorage State
 const WEB_STORAGE_KEY = 'caloriesnap_web_data_v1';
@@ -55,12 +59,14 @@ function saveWebStore() {
         ...webStore,
         meals: (webStore.meals || []).map((m) => ({
           ...m,
-          image_uri: m.image_uri && m.image_uri.length > 500 ? null : m.image_uri,
+          image_uri: m.image_uri?.startsWith('data:') ? null : m.image_uri,
         })),
       };
       window.localStorage.setItem(WEB_STORAGE_KEY, JSON.stringify(safeStore));
+      committedWebStore = JSON.stringify(webStore);
     } catch (e) {
-      console.warn('LocalStorage save failed:', e);
+      if (committedWebStore) webStore = JSON.parse(committedWebStore);
+      throw new Error('Could not save data in browser storage. Free some space and try again.');
     }
   }
 }
@@ -70,10 +76,14 @@ function loadWebStore() {
     try {
       const data = window.localStorage.getItem(WEB_STORAGE_KEY);
       if (data) {
-        webStore = JSON.parse(data);
+        const parsed = JSON.parse(data);
+        validateBackup({ ...parsed, schema_version: 2 });
+        webStore = { ...parsed, profile: validateProfile({ ...DEFAULT_PROFILE, ...parsed.profile }), goals: validateGoals({ ...DEFAULT_GOALS, ...parsed.goals }) };
+        committedWebStore = JSON.stringify(webStore);
+        return true;
       }
     } catch (e) {
-      console.warn('LocalStorage load failed:', e);
+      throw new Error('Saved browser data could not be read. Restore a valid backup or check browser storage access.');
     }
   }
 }
@@ -188,11 +198,12 @@ async function migrateDatabase(db) {
   }
 
   if (currentVersion < 2) {
-    try {
+    const columns = await db.getAllAsync('PRAGMA table_info(profile)');
+    if (!columns.some((column) => column.name === 'custom_api_key')) {
       await db.execAsync(`
         ALTER TABLE profile ADD COLUMN custom_api_key TEXT DEFAULT '';
       `);
-    } catch {}
+    }
     await db.execAsync('PRAGMA user_version = 2');
   }
 }
@@ -201,24 +212,30 @@ async function migrateDatabase(db) {
  * Initializes and returns the SQLite database singleton instance.
  */
 export async function initDatabase() {
-  if (IS_WEB) {
-    loadWebStore();
-    await seedDemoDataIfEmpty();
-    return null;
-  }
-
-  if (!dbInstance) {
+  if (initialized) return dbInstance;
+  if (initialization) return initialization;
+  // Defer synchronous browser reads until the shared promise is assigned.
+  // Otherwise an early storage exception can leave a rejected promise cached.
+  initialization = Promise.resolve().then(async () => {
     try {
-      dbInstance = await SQLite.openDatabaseAsync('caloriesnap.db');
-      await migrateDatabase(dbInstance);
-      await seedDemoDataIfEmpty();
-    } catch (err) {
-      console.warn('Native SQLite init fallback to web store:', err);
-      loadWebStore();
-      await seedDemoDataIfEmpty();
-    }
-  }
-  return dbInstance;
+      if (IS_WEB) {
+        const hasSavedData = loadWebStore();
+        if (!hasSavedData) await seedDemoDataIfEmpty();
+      } else {
+        if (!SQLite) throw new Error('SQLite is unavailable on this device.');
+        dbInstance = await SQLite.openDatabaseAsync('caloriesnap.db');
+        const version = await dbInstance.getFirstAsync('PRAGMA user_version');
+        await migrateDatabase(dbInstance);
+        if (!version?.user_version) await seedDemoDataIfEmpty();
+      }
+      initialized = true;
+      return dbInstance;
+    } catch (error) {
+      dbInstance = null;
+      throw error;
+    } finally { initialization = null; }
+  });
+  return initialization;
 }
 
 /**
@@ -237,6 +254,7 @@ async function getDB() {
 // ----------------------------------------------------
 
 export async function getMealsByDate(date) {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     return webStore.meals.filter((m) => m.date === date).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
@@ -248,7 +266,9 @@ export async function getMealsByDate(date) {
 }
 
 export async function insertMeal(meal) {
-  const date = meal.date || getTodayString();
+  await initDatabase();
+  meal = validateMeal({ ...meal, meal_type: meal.meal_type || 'snack' });
+  const date = validateDate(meal.date || getTodayString());
   const timestamp = meal.timestamp || new Date().toISOString();
   const meal_type = meal.meal_type || 'snack';
   const name = meal.name || 'Untitled Meal';
@@ -295,6 +315,11 @@ export async function insertMeal(meal) {
 }
 
 export async function updateMeal(id, meal) {
+  await initDatabase();
+  const existing = IS_WEB ? webStore.meals.find((m) => m.id === id) : await dbInstance.getFirstAsync('SELECT * FROM meals WHERE id = ?', [id]);
+  if (!existing) throw new Error('This meal no longer exists.');
+  meal = validateMeal({ ...existing, ...meal });
+  meal.image_uri = await persistImageAsync(meal.image_uri || null);
   if (IS_WEB || !dbInstance) {
     const idx = webStore.meals.findIndex((m) => m.id === id);
     if (idx !== -1) {
@@ -327,21 +352,22 @@ export async function updateMeal(id, meal) {
 }
 
 export async function deleteMealById(id) {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     const mealToDelete = webStore.meals.find((m) => m.id === id);
-    if (mealToDelete?.image_uri) {
-      await deletePersistedImageAsync(mealToDelete.image_uri);
-    }
     webStore.meals = webStore.meals.filter((m) => m.id !== id);
     saveWebStore();
+    if (mealToDelete?.image_uri && !webStore.meals.some((m) => m.image_uri === mealToDelete.image_uri)) await deletePersistedImageAsync(mealToDelete.image_uri);
     return;
   }
   const db = await getDB();
   const mealToDelete = await db.getFirstAsync('SELECT image_uri FROM meals WHERE id = ?', [id]);
+  const result = await db.runAsync('DELETE FROM meals WHERE id = ?', [id]);
   if (mealToDelete?.image_uri) {
-    await deletePersistedImageAsync(mealToDelete.image_uri);
+    const reference = await db.getFirstAsync('SELECT id FROM meals WHERE image_uri = ? LIMIT 1', [mealToDelete.image_uri]);
+    if (!reference) await deletePersistedImageAsync(mealToDelete.image_uri);
   }
-  return await db.runAsync('DELETE FROM meals WHERE id = ?', [id]);
+  return result;
 }
 
 // ----------------------------------------------------
@@ -349,6 +375,7 @@ export async function deleteMealById(id) {
 // ----------------------------------------------------
 
 export async function getExercisesByDate(date) {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     return webStore.exercises.filter((e) => e.date === date).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
@@ -360,7 +387,9 @@ export async function getExercisesByDate(date) {
 }
 
 export async function insertExercise(exercise) {
-  const date = exercise.date || getTodayString();
+  await initDatabase();
+  exercise = validateExercise(exercise);
+  const date = validateDate(exercise.date || getTodayString());
   const timestamp = exercise.timestamp || new Date().toISOString();
   const exercise_name = exercise.exercise_name || 'Workout';
   const duration_minutes = Number(exercise.duration_minutes) || 0;
@@ -394,6 +423,7 @@ export async function insertExercise(exercise) {
 }
 
 export async function deleteExerciseById(id) {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     webStore.exercises = webStore.exercises.filter((e) => e.id !== id);
     saveWebStore();
@@ -408,6 +438,7 @@ export async function deleteExerciseById(id) {
 // ----------------------------------------------------
 
 export async function getWaterIntakeByDate(date) {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     return webStore.water_intake.filter((w) => w.date === date).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
@@ -419,8 +450,10 @@ export async function getWaterIntakeByDate(date) {
 }
 
 export async function addWaterIntake(amountMl, date = getTodayString()) {
+  await initDatabase();
   const timestamp = new Date().toISOString();
-  const amount = Number(amountMl) || 250;
+  validateDate(date);
+  const amount = numberInRange(amountMl, 'Water volume', 1, 10000);
 
   if (IS_WEB || !dbInstance) {
     const newId = Date.now() + Math.floor(Math.random() * 1000);
@@ -442,6 +475,7 @@ export async function addWaterIntake(amountMl, date = getTodayString()) {
 }
 
 export async function removeRecentWaterIntake(date = getTodayString()) {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     const dateEntries = webStore.water_intake.filter((w) => w.date === date);
     if (dateEntries.length > 0) {
@@ -467,6 +501,7 @@ export async function removeRecentWaterIntake(date = getTodayString()) {
 // ----------------------------------------------------
 
 export async function getGoals() {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     return webStore.goals;
   }
@@ -486,14 +521,16 @@ export async function getGoals() {
 }
 
 export async function updateGoals(goals) {
+  await initDatabase();
+  goals = validateGoals(goals);
   const updated = {
     id: 1,
     calories: Number(goals.calories) || 2000,
-    protein: Number(goals.protein) || 140,
-    carbs: Number(goals.carbs) || 220,
-    fat: Number(goals.fat) || 65,
+    protein: goals.protein,
+    carbs: goals.carbs,
+    fat: goals.fat,
     water_ml: Number(goals.water_ml) || 2500,
-    exercise_minutes: Number(goals.exercise_minutes) || 30,
+    exercise_minutes: goals.exercise_minutes,
   };
 
   if (IS_WEB || !dbInstance) {
@@ -519,6 +556,7 @@ export async function updateGoals(goals) {
 }
 
 export async function getProfile() {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     return webStore.profile;
   }
@@ -540,6 +578,8 @@ export async function getProfile() {
 }
 
 export async function updateProfile(profile) {
+  await initDatabase();
+  profile = validateProfile({ ...(await getProfile()), ...profile });
   const updated = {
     id: 1,
     name: profile.name || 'User',
@@ -579,6 +619,22 @@ export async function updateProfile(profile) {
 // ----------------------------------------------------
 // SEEDING DEMO DATA
 // ----------------------------------------------------
+
+export async function updateProfileAndGoals(profile, goals) {
+  await initDatabase();
+  const p = validateProfile({ ...(await getProfile()), ...profile });
+  const g = validateGoals(goals);
+  if (IS_WEB) {
+    webStore.profile = p;
+    webStore.goals = g;
+    saveWebStore();
+    return;
+  }
+  await dbInstance.withExclusiveTransactionAsync(async (tx) => {
+    await tx.runAsync('UPDATE profile SET name=?,gender=?,age=?,weight_kg=?,height_cm=?,activity_level=?,goal_type=?,custom_api_key=? WHERE id=1', [p.name,p.gender,p.age,p.weight_kg,p.height_cm,p.activity_level,p.goal_type,p.custom_api_key || '']);
+    await tx.runAsync('UPDATE goals SET calories=?,protein=?,carbs=?,fat=?,water_ml=?,exercise_minutes=? WHERE id=1', [g.calories,g.protein,g.carbs,g.fat,g.water_ml,g.exercise_minutes]);
+  });
+}
 
 export async function seedDemoDataIfEmpty() {
   const today = getTodayString();
@@ -637,23 +693,7 @@ export async function seedDemoDataIfEmpty() {
 }
 
 export async function resetDatabaseToDemo() {
-  if (IS_WEB || !dbInstance) {
-    webStore.meals = [];
-    webStore.exercises = [];
-    webStore.water_intake = [];
-    await seedDemoDataIfEmpty();
-    return;
-  }
-  const db = await getDB();
-  await db.execAsync(`
-    DELETE FROM meals;
-    DELETE FROM exercises;
-    DELETE FROM water_intake;
-    DELETE FROM goals;
-    DELETE FROM profile;
-    PRAGMA user_version = 0;
-  `);
-  await migrateDatabase(db);
+  await clearAllLogs();
   await seedDemoDataIfEmpty();
 }
 
@@ -662,52 +702,44 @@ export async function resetDatabaseToDemo() {
  * Restores virgin state without loading demo data.
  */
 export async function factoryResetAllData() {
-  if (IS_WEB || !dbInstance) {
-    webStore = {
-      meals: [],
-      exercises: [],
-      water_intake: [],
-      goals: { ...DEFAULT_GOALS },
-      profile: { ...DEFAULT_PROFILE },
-    };
+  await initDatabase();
+  const images = IS_WEB ? webStore.meals : await dbInstance.getAllAsync('SELECT image_uri FROM meals');
+  if (IS_WEB) {
+    webStore = { meals: [], exercises: [], water_intake: [], goals: { ...DEFAULT_GOALS }, profile: { ...DEFAULT_PROFILE } };
     saveWebStore();
-    return;
+  } else {
+    await dbInstance.withExclusiveTransactionAsync(async (tx) => {
+      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake; DELETE FROM goals; DELETE FROM profile;');
+      const p = DEFAULT_PROFILE; const g = DEFAULT_GOALS;
+      await tx.runAsync('INSERT INTO profile (id,name,gender,age,weight_kg,height_cm,activity_level,goal_type,custom_api_key) VALUES (1,?,?,?,?,?,?,?,?)', [p.name,p.gender,p.age,p.weight_kg,p.height_cm,p.activity_level,p.goal_type,p.custom_api_key]);
+      await tx.runAsync('INSERT INTO goals (id,calories,protein,carbs,fat,water_ml,exercise_minutes) VALUES (1,?,?,?,?,?,?)', [g.calories,g.protein,g.carbs,g.fat,g.water_ml,g.exercise_minutes]);
+    });
   }
-  const db = await getDB();
-  await db.execAsync(`
-    DELETE FROM meals;
-    DELETE FROM exercises;
-    DELETE FROM water_intake;
-    DELETE FROM goals;
-    DELETE FROM profile;
-    PRAGMA user_version = 0;
-  `);
-  await migrateDatabase(db);
+  await Promise.all(images.map((meal) => deletePersistedImageAsync(meal.image_uri)));
 }
 
 /**
  * Clears all meal logs, workout history, and water intake to start from a completely clean slate.
  */
 export async function clearAllLogs() {
-  if (IS_WEB || !dbInstance) {
-    webStore.meals = [];
-    webStore.exercises = [];
-    webStore.water_intake = [];
+  await initDatabase();
+  const images = IS_WEB ? webStore.meals : await dbInstance.getAllAsync('SELECT image_uri FROM meals');
+  if (IS_WEB) {
+    webStore.meals = []; webStore.exercises = []; webStore.water_intake = [];
     saveWebStore();
-    return;
+  } else {
+    await dbInstance.withExclusiveTransactionAsync(async (tx) => {
+      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake;');
+    });
   }
-  const db = await getDB();
-  await db.execAsync(`
-    DELETE FROM meals;
-    DELETE FROM exercises;
-    DELETE FROM water_intake;
-  `);
+  await Promise.all(images.map((meal) => deletePersistedImageAsync(meal.image_uri)));
 }
 
 /**
  * Exports all database records as a structured JSON backup
  */
 export async function exportAllDataJSON() {
+  await initDatabase();
   if (IS_WEB || !dbInstance) {
     return JSON.stringify(
       {
@@ -754,150 +786,32 @@ export async function exportAllDataJSON() {
  * Imports database records from a structured JSON backup with schema-version normalization
  */
 export async function importAllDataJSON(jsonString) {
+  await initDatabase();
   let parsed;
-  try {
-    parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
-  } catch (err) {
-    throw new Error('Invalid JSON format. Please provide a valid backup file.');
-  }
-
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Malformed backup object.');
-  }
-
-  const schemaVersion = parsed.schema_version || parsed.version || 1;
-
-  if (IS_WEB || !dbInstance) {
-    if (parsed.profile) {
-      webStore.profile = {
-        ...DEFAULT_PROFILE,
-        ...parsed.profile,
-        custom_api_key: parsed.profile.custom_api_key || '',
-      };
-    }
-    if (parsed.goals) {
-      webStore.goals = {
-        ...DEFAULT_GOALS,
-        ...parsed.goals,
-      };
-    }
-    if (Array.isArray(parsed.meals)) {
-      webStore.meals = parsed.meals.map((m) => ({
-        id: m.id || Date.now() + Math.floor(Math.random() * 1000),
-        date: m.date || getTodayString(),
-        timestamp: m.timestamp || new Date().toISOString(),
-        meal_type: m.meal_type || 'snack',
-        name: m.name || 'Imported Meal',
-        calories: Number(m.calories) || 0,
-        protein: Number(m.protein) || 0,
-        carbs: Number(m.carbs) || 0,
-        fat: Number(m.fat) || 0,
-        fiber: Number(m.fiber) || 0,
-        sugar: Number(m.sugar) || 0,
-        sodium: Number(m.sodium) || 0,
-        portion: m.portion || '1 serving',
-        image_uri: m.image_uri || null,
-      }));
-    }
-    if (Array.isArray(parsed.exercises)) {
-      webStore.exercises = parsed.exercises.map((e) => ({
-        id: e.id || Date.now() + Math.floor(Math.random() * 1000),
-        date: e.date || getTodayString(),
-        timestamp: e.timestamp || new Date().toISOString(),
-        exercise_name: e.exercise_name || 'Workout',
-        duration_minutes: Number(e.duration_minutes) || 0,
-        calories_burned: Number(e.calories_burned) || 0,
-        intensity: e.intensity || 'moderate',
-        category: e.category || 'cardio',
-      }));
-    }
-    if (Array.isArray(parsed.water_intake)) {
-      webStore.water_intake = parsed.water_intake.map((w) => ({
-        id: w.id || Date.now() + Math.floor(Math.random() * 1000),
-        date: w.date || getTodayString(),
-        timestamp: w.timestamp || new Date().toISOString(),
-        amount_ml: Number(w.amount_ml) || 250,
-      }));
-    }
+  try { parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString; }
+  catch { throw new Error('Invalid JSON format. Please provide a valid backup file.'); }
+  validateBackup(parsed);
+  const profile = validateProfile({ ...DEFAULT_PROFILE, ...parsed.profile });
+  const goals = validateGoals({ ...DEFAULT_GOALS, ...parsed.goals });
+  const normalize = (records, validator) => records.map((record, index) => validator({ ...record, id: index + 1, timestamp: record.timestamp || new Date().toISOString() }));
+  const meals = normalize(parsed.meals, (m) => validateMeal({ ...m, meal_type: m.meal_type || 'snack', image_uri: m.image_uri || null, portion: m.portion || '1 serving' }));
+  const exercises = normalize(parsed.exercises, validateExercise);
+  const water_intake = normalize(parsed.water_intake, (w) => w);
+  if (IS_WEB) {
+    webStore = { profile, goals, meals, exercises, water_intake };
     saveWebStore();
-    return {
-      schemaVersion,
-      mealCount: webStore.meals.length,
-      exerciseCount: webStore.exercises.length,
-      waterCount: webStore.water_intake.length,
-    };
-  }
-
-  const db = await getDB();
-
-  // Clean existing tables
-  await db.execAsync(`
-    DELETE FROM meals;
-    DELETE FROM exercises;
-    DELETE FROM water_intake;
-  `);
-
-  if (parsed.profile) {
-    await updateProfile({
-      ...DEFAULT_PROFILE,
-      ...parsed.profile,
-      custom_api_key: parsed.profile.custom_api_key || '',
+  } else {
+    // All validation happens before deletion; a failed write rolls back everything.
+    await dbInstance.withExclusiveTransactionAsync(async (tx) => {
+      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake;');
+      await tx.runAsync('UPDATE profile SET name=?, gender=?, age=?, weight_kg=?, height_cm=?, activity_level=?, goal_type=?, custom_api_key=? WHERE id=1', [profile.name, profile.gender, profile.age, profile.weight_kg, profile.height_cm, profile.activity_level, profile.goal_type, profile.custom_api_key || '']);
+      await tx.runAsync('UPDATE goals SET calories=?, protein=?, carbs=?, fat=?, water_ml=?, exercise_minutes=? WHERE id=1', [goals.calories, goals.protein, goals.carbs, goals.fat, goals.water_ml, goals.exercise_minutes]);
+      for (const m of meals) await tx.runAsync('INSERT INTO meals (date,timestamp,meal_type,name,calories,protein,carbs,fat,fiber,sugar,sodium,portion,image_uri) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [m.date,m.timestamp,m.meal_type,m.name,m.calories,m.protein,m.carbs,m.fat,m.fiber,m.sugar,m.sodium,m.portion,m.image_uri]);
+      for (const e of exercises) await tx.runAsync('INSERT INTO exercises (date,timestamp,exercise_name,duration_minutes,calories_burned,intensity,category) VALUES (?,?,?,?,?,?,?)', [e.date,e.timestamp,e.exercise_name,e.duration_minutes,e.calories_burned,e.intensity || 'moderate',e.category || 'cardio']);
+      for (const w of water_intake) await tx.runAsync('INSERT INTO water_intake (date,timestamp,amount_ml) VALUES (?,?,?)', [w.date,w.timestamp,w.amount_ml]);
     });
   }
-  if (parsed.goals) {
-    await updateGoals({
-      ...DEFAULT_GOALS,
-      ...parsed.goals,
-    });
-  }
-
-  let mealCount = 0;
-  if (Array.isArray(parsed.meals)) {
-    for (const m of parsed.meals) {
-      await insertMeal({
-        date: m.date || getTodayString(),
-        timestamp: m.timestamp || new Date().toISOString(),
-        meal_type: m.meal_type || 'snack',
-        name: m.name || 'Imported Meal',
-        calories: Number(m.calories) || 0,
-        protein: Number(m.protein) || 0,
-        carbs: Number(m.carbs) || 0,
-        fat: Number(m.fat) || 0,
-        fiber: Number(m.fiber) || 0,
-        sugar: Number(m.sugar) || 0,
-        sodium: Number(m.sodium) || 0,
-        portion: m.portion || '1 serving',
-        image_uri: m.image_uri || null,
-      });
-      mealCount++;
-    }
-  }
-
-  let exerciseCount = 0;
-  if (Array.isArray(parsed.exercises)) {
-    for (const e of parsed.exercises) {
-      await insertExercise({
-        date: e.date || getTodayString(),
-        timestamp: e.timestamp || new Date().toISOString(),
-        exercise_name: e.exercise_name || 'Workout',
-        duration_minutes: Number(e.duration_minutes) || 0,
-        calories_burned: Number(e.calories_burned) || 0,
-        intensity: e.intensity || 'moderate',
-        category: e.category || 'cardio',
-      });
-      exerciseCount++;
-    }
-  }
-
-  let waterCount = 0;
-  if (Array.isArray(parsed.water_intake)) {
-    for (const w of parsed.water_intake) {
-      await addWaterIntake(Number(w.amount_ml) || 250, w.date || getTodayString());
-      waterCount++;
-    }
-  }
-
-  return { schemaVersion, mealCount, exerciseCount, waterCount };
+  return { schemaVersion: parsed.schema_version || parsed.version || 1, mealCount: meals.length, exerciseCount: exercises.length, waterCount: water_intake.length };
 }
 
 /**
@@ -1012,5 +926,3 @@ export function calculateStreakFromDates(uniqueDateList = [], todayStr = getToda
 
   return streak;
 }
-
-

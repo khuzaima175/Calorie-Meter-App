@@ -1,17 +1,29 @@
 // src/components/MealPlanCard.js
 // Interactive meal plan display with recipe instructions and instant logging
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Button from './Button';
 import { colors, radius, typography } from '../theme/colors';
+import { Alert } from '../services/alertService';
 
 export default function MealPlanCard({ plan, onLogMealItem }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
+  const [savingIndex, setSavingIndex] = useState(null);
+  const saving = useRef(false);
 
-  if (!plan || !plan.meals) return null;
+  if (!Array.isArray(plan?.meals)) return null;
+
+  const logMeal = async (meal, index) => {
+    if (saving.current) return;
+    saving.current = true;
+    setSavingIndex(index);
+    try { await onLogMealItem?.(meal); }
+    catch (error) { Alert.alert('Meal Log Failed', error.message); }
+    finally { saving.current = false; setSavingIndex(null); }
+  };
 
   const toggleExpand = (index) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -43,7 +55,7 @@ export default function MealPlanCard({ plan, onLogMealItem }) {
 
           return (
             <View key={idx} style={styles.mealBlock}>
-              <TouchableOpacity
+              <TouchableOpacity accessibilityRole="button"
                 style={styles.mealHeader}
                 onPress={() => toggleExpand(idx)}
                 activeOpacity={0.7}
@@ -117,10 +129,9 @@ export default function MealPlanCard({ plan, onLogMealItem }) {
 
                   <Button
                     title="Log This Meal"
-                    onPress={() => {
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-                      onLogMealItem?.(meal);
-                    }}
+                    onPress={() => logMeal(meal, idx)}
+                    loading={savingIndex === idx}
+                    disabled={savingIndex !== null}
                     size="sm"
                     style={styles.logMealBtn}
                   />

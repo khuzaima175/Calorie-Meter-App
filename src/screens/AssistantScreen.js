@@ -1,3 +1,4 @@
+import { Alert } from '../services/alertService';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -8,7 +9,6 @@ import {
   TouchableOpacity,
   Platform,
   ActivityIndicator,
-  Alert,
   Keyboard,
   UIManager,
   LayoutAnimation,
@@ -40,6 +40,7 @@ export default function AssistantScreen() {
   const requestMealPlan = useAIStore((s) => s.requestMealPlan);
 
   const dailyTotals = useNutritionStore((s) => s.dailyTotals);
+  const selectedDate = useNutritionStore((s) => s.selectedDate);
   const addMeal = useNutritionStore((s) => s.addMeal);
   const profile = useProfileStore((s) => s.profile);
   const goals = useProfileStore((s) => s.goals);
@@ -55,7 +56,7 @@ export default function AssistantScreen() {
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
     const showSub = Keyboard.addListener(showEvent, (e) => {
-      const height = e.endCoordinates ? e.endCoordinates.height : 0;
+      const height = Platform.OS === 'ios' && e.endCoordinates ? e.endCoordinates.height : 0;
       Animated.timing(keyboardPadding, {
         toValue: height,
         duration: Platform.OS === 'ios' ? (e.duration || 250) : 120,
@@ -94,11 +95,12 @@ export default function AssistantScreen() {
   };
 
   const userContext = {
+    date: selectedDate,
     profile,
     goals,
     totals: dailyTotals,
     remaining: {
-      calories: goals.calories - dailyTotals.calories,
+      calories: goals.calories - dailyTotals.netCalories,
       protein: goals.protein - dailyTotals.protein,
       carbs: goals.carbs - dailyTotals.carbs,
       fat: goals.fat - dailyTotals.fat,
@@ -129,7 +131,8 @@ export default function AssistantScreen() {
 
   const handleGenerateMealPlan = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await requestMealPlan(profile, goals, 'high protein, whole foods');
+    try { await requestMealPlan(profile, goals, 'high protein, whole foods'); }
+    catch (error) { Alert.alert('Meal Plan Failed', error.message); }
   };
 
   const handleLogMealItemFromPlan = async (mealItem) => {

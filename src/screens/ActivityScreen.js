@@ -1,3 +1,4 @@
+import { Alert } from '../services/alertService';
 // src/screens/ActivityScreen.js
 // Fitness and Workout Tracking Screen: Active minutes, calories burned, workout history, and MET calculator
 
@@ -19,6 +20,7 @@ import DaySelector from '../components/DaySelector';
 import ExerciseCard from '../components/ExerciseCard';
 import AddExerciseModal from '../components/AddExerciseModal';
 import Card from '../components/Card';
+import NutritionErrorBanner from '../components/NutritionErrorBanner';
 import Button from '../components/Button';
 import { colors, radius, typography } from '../theme/colors';
 
@@ -56,7 +58,7 @@ export default function ActivityScreen() {
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
-      console.warn('Quick log error:', err);
+      Alert.alert('Workout Log Failed', err.message);
     }
   };
 
@@ -74,15 +76,15 @@ export default function ActivityScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    await refreshData(selectedDate);
-    setRefreshing(false);
+    try { await refreshData(selectedDate); }
+    finally { setRefreshing(false); }
   }, [refreshData, selectedDate]);
 
-  const targetMinutes = goals.exercise_minutes || 30;
-  const activePercent = Math.min(100, Math.round((dailyTotals.activeMinutes / targetMinutes) * 100));
+  const targetMinutes = goals.exercise_minutes;
+  const activePercent = targetMinutes > 0 ? Math.min(100, Math.round((dailyTotals.activeMinutes / targetMinutes) * 100)) : 0;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -95,6 +97,7 @@ export default function ActivityScreen() {
           />
         }
       >
+        <NutritionErrorBanner />
         {/* Header */}
         <View style={styles.headerRow}>
           <View style={styles.headerTextCol}>
@@ -161,7 +164,7 @@ export default function ActivityScreen() {
           {QUICK_ACTIVITIES.map((act, idx) => {
             const estCals = Math.round(((act.met * 3.5 * userWeight) / 200) * act.mins);
             return (
-              <TouchableOpacity
+              <TouchableOpacity accessibilityRole="button"
                 key={idx}
                 style={styles.quickLogCard}
                 onPress={() => handleQuickLog(act)}
@@ -248,7 +251,7 @@ export default function ActivityScreen() {
         )}
 
         {/* Workout Modal */}
-        <AddExerciseModal
+        <AddExerciseModal date={selectedDate}
           visible={modalVisible}
           onClose={() => setModalVisible(false)}
           onSave={addExercise}

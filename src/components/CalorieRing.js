@@ -20,8 +20,8 @@ export default function CalorieRing({
 
   // Remaining calories calculation
   const netConsumed = Math.max(0, consumed);
-  const remaining = goal - netConsumed;
-  const percentage = goal > 0 ? Math.min(1.2, netConsumed / goal) : 0;
+  const remaining = goal + burned - netConsumed;
+  const percentage = goal > 0 ? Math.min(1.2, Math.max(0, netConsumed - burned) / goal) : 0;
   const isOver = remaining < 0;
 
   const [strokeDashoffset, setStrokeDashoffset] = useState(

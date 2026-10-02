@@ -163,7 +163,7 @@ export default function AIChatBubble({ message, onQuickReplyPress }) {
         {!isStreaming && message.quickReplies && message.quickReplies.length > 0 && (
           <View style={styles.quickRepliesContainer}>
             {message.quickReplies.map((reply, rIdx) => (
-              <TouchableOpacity
+              <TouchableOpacity accessibilityRole="button"
                 key={rIdx}
                 style={styles.replyChip}
                 onPress={() => onQuickReplyPress?.(reply)}

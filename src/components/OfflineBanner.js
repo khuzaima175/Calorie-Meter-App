@@ -41,7 +41,7 @@ export default function OfflineBanner() {
     <Animated.View style={[styles.banner, { transform: [{ translateY: slideAnim }] }]}>
       <Ionicons name="cloud-offline-outline" size={14} color="#FFFFFF" />
       <Text style={styles.bannerText}>
-        Offline Mode — All meals & water are saved locally to SQLite
+        Offline — Your logs are stored on this device. AI needs internet.
       </Text>
     </Animated.View>
   );

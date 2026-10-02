@@ -1,3 +1,4 @@
+import { validateDate } from '../services/validation';
 // src/stores/useNutritionStore.js
 // High-performance Zustand store for daily nutrition, water, and exercise tracking
 
@@ -16,12 +17,16 @@ import {
   removeRecentWaterIntake,
 } from '../services/databaseService';
 
+let refreshRequest = 0;
+
 export const useNutritionStore = create((set, get) => ({
   selectedDate: getTodayString(),
   meals: [],
   exercises: [],
   waterEntries: [],
   isLoading: false,
+  error: null,
+  dataRevision: 0,
 
   dailyTotals: {
     calories: 0,
@@ -36,13 +41,17 @@ export const useNutritionStore = create((set, get) => ({
   },
 
   setSelectedDate: async (date) => {
-    set({ selectedDate: date });
+    validateDate(date);
+    if (date > getTodayString()) throw new Error('Cannot select a future date.');
+    set({ selectedDate: date, meals: [], exercises: [], waterEntries: [], dailyTotals: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, water: 0, caloriesBurned: 0, activeMinutes: 0, netCalories: 0 } });
     await get().refreshData(date);
   },
 
   refreshData: async (dateOverride) => {
     const targetDate = dateOverride || get().selectedDate;
-    set({ isLoading: true });
+    if (targetDate !== get().selectedDate) return;
+    const request = ++refreshRequest;
+    set({ isLoading: true, error: null });
 
     try {
       const [meals, exercises, waterEntries] = await Promise.all([
@@ -51,6 +60,7 @@ export const useNutritionStore = create((set, get) => ({
         getWaterIntakeByDate(targetDate),
       ]);
 
+      if (request !== refreshRequest || targetDate !== get().selectedDate) return;
       const totalCalories = meals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
       const totalProtein = meals.reduce((sum, m) => sum + (Number(m.protein) || 0), 0);
       const totalCarbs = meals.reduce((sum, m) => sum + (Number(m.carbs) || 0), 0);
@@ -61,7 +71,7 @@ export const useNutritionStore = create((set, get) => ({
       const activeMinutes = exercises.reduce((sum, e) => sum + (Number(e.duration_minutes) || 0), 0);
 
       set({
-        selectedDate: targetDate,
+        dataRevision: get().dataRevision + 1,
         meals,
         exercises,
         waterEntries,
@@ -80,14 +90,14 @@ export const useNutritionStore = create((set, get) => ({
       });
     } catch (error) {
       console.error('Failed to refresh nutrition data:', error);
-      set({ isLoading: false });
+      if (request === refreshRequest) set({ isLoading: false, error: error.message });
     }
   },
 
   addMeal: async (mealData) => {
     const targetDate = mealData.date || get().selectedDate;
     await insertMeal({ ...mealData, date: targetDate });
-    await get().refreshData(targetDate);
+    await get().refreshData();
   },
 
   editMeal: async (id, mealData) => {
@@ -100,22 +110,22 @@ export const useNutritionStore = create((set, get) => ({
     await get().refreshData();
   },
 
-  logWater: async (amountMl) => {
-    const targetDate = get().selectedDate;
+  logWater: async (amountMl, date) => {
+    const targetDate = validateDate(date || get().selectedDate);
     await addWaterIntake(amountMl, targetDate);
-    await get().refreshData(targetDate);
+    await get().refreshData();
   },
 
   undoWater: async () => {
     const targetDate = get().selectedDate;
     await removeRecentWaterIntake(targetDate);
-    await get().refreshData(targetDate);
+    await get().refreshData();
   },
 
   addExercise: async (exerciseData) => {
     const targetDate = exerciseData.date || get().selectedDate;
     await insertExercise({ ...exerciseData, date: targetDate });
-    await get().refreshData(targetDate);
+    await get().refreshData();
   },
 
   removeExercise: async (id) => {

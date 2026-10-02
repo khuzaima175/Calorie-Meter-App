@@ -1,7 +1,8 @@
+import { Alert } from '../services/alertService';
 // src/components/BarcodeScanner.js
 // Live Fullscreen Barcode Scanner with Inset Overlays, Laser Target & Manual Entry
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,6 +28,11 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const scanLock = useRef(false);
+  const lookupPending = useRef(false);
+  const mounted = useRef(true);
+  const [cameraError, setCameraError] = useState(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [cameraKey, setCameraKey] = useState(1);
 
   // Force a clean native remount after initial layout pass on Android
@@ -37,20 +43,22 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
     return () => clearTimeout(timer);
   }, []);
 
-  const handleBarcodeScanned = ({ data }) => {
-    if (scanned || isProcessing || !data) return;
+  const handleBarcodeScanned = async ({ data }) => {
+    if (scanLock.current || isProcessing || !data) return;
+    scanLock.current = true;
+    lookupPending.current = true;
     setScanned(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    onScanBarcode(data);
-
-    // Re-enable scanning after 3 seconds in case user wants to scan again
-    setTimeout(() => setScanned(false), 3000);
+    try { await onScanBarcode(data); }
+    catch (error) { if (mounted.current) Alert.alert('Barcode Lookup Failed', error.message || 'Please try again.'); }
+    finally { lookupPending.current = false; }
   };
 
   const handleManualSubmit = () => {
-    if (!manualCode.trim()) return;
+    if (!manualCode.trim() || isProcessing || lookupPending.current) return;
+    scanLock.current = false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    onScanBarcode(manualCode.trim());
+    return handleBarcodeScanned({ data: manualCode.trim() });
   };
 
   if (!permission) {
@@ -62,23 +70,25 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
     );
   }
 
-  if (!permission.granted) {
+  if (!permission.granted || cameraError) {
     return (
       <View style={[styles.permissionWrapper, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }]}>
         <View style={styles.permissionCard}>
           <View style={styles.iconCircle}>
             <Ionicons name="barcode" size={36} color={colors.sageBright} />
           </View>
-          <Text style={styles.permTitle}>Camera Permission Required</Text>
+          <Text style={styles.permTitle}>{cameraError ? 'Camera Unavailable' : 'Camera Permission Required'}</Text>
           <Text style={styles.permSubtitle}>
             Grant camera access to scan food barcodes directly and fetch instant nutrition details.
           </Text>
           <Button
-            title="Allow Camera"
-            onPress={requestPermission}
+            title={cameraError ? "Retry Camera" : "Allow Camera"}
+            onPress={() => { setCameraError(null); setCameraKey(k => k + 1); requestPermission().catch(error => Alert.alert("Camera Access Failed", error.message)); }}
             size="lg"
             style={styles.permBtn}
           />
+          <Input label="Barcode number digits" value={manualCode} onChangeText={setManualCode} keyboardType="numeric" />
+          <Button title="Search" onPress={handleManualSubmit} loading={isProcessing} accessibilityLabel="Search product by barcode" />
         </View>
       </View>
     );
@@ -96,6 +106,7 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
           barcodeScannerSettings={{
             barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
           }}
+          onMountError={() => setCameraError("Unable to start camera")}
           onBarcodeScanned={scanned || isProcessing ? undefined : handleBarcodeScanned}
         />
       )}
@@ -147,6 +158,11 @@ export default function BarcodeScanner({ onScanBarcode, isProcessing = false }) 
           </View>
         </View>
 
+        {scanned && !isProcessing && (
+          <View style={{ position: 'absolute', top: insets.top + 115, alignSelf: 'center' }}>
+            <Button title="Scan Again" onPress={() => { scanLock.current = false; setScanned(false); }} />
+          </View>
+        )}
         {/* Bottom Manual Entry Drawer / Toggle */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

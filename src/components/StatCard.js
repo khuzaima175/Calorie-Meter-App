@@ -35,7 +35,7 @@ export default function StatCard({
 
   if (onPress) {
     return (
-      <TouchableOpacity activeOpacity={0.75} onPress={onPress}>
+      <TouchableOpacity accessibilityRole="button" activeOpacity={0.75} onPress={onPress}>
         {content}
       </TouchableOpacity>
     );
