@@ -6,6 +6,9 @@ const PRIMARY_MODEL = 'gemini-3.5-flash-lite';
 const FALLBACK_MODEL = 'gemini-flash-lite-latest';
 const CHAT_MODEL = 'gemini-3.5-flash-lite';
 
+// Flips to true once a model rejects generationConfig.thinkingConfig so we stop sending it.
+let thinkingConfigUnsupported = false;
+
 /**
  * Returns current real-time meal period for Pakistani / local daily routine
  */
@@ -297,12 +300,13 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     throw new Error('Please set your Gemini API key in Profile > Settings or in your .env file.');
   }
 
-  if (!rateLimiter.canRequest()) {
-    const waitSec = rateLimiter.getWaitSeconds();
-    throw new Error(`AI rate limit reached. Please wait ${waitSec} seconds before asking again.`);
+  if (!options.isRetry) {
+    if (!rateLimiter.canRequest()) {
+      const waitSec = rateLimiter.getWaitSeconds();
+      throw new Error(`AI rate limit reached. Please wait ${waitSec} seconds before asking again.`);
+    }
+    rateLimiter.recordRequest();
   }
-
-  rateLimiter.recordRequest();
 
   // Send API key via secure x-goog-api-key header (omits key from URL logs/proxies)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
@@ -318,6 +322,12 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     if (options.responseSchema) {
       generationConfig.responseSchema = options.responseSchema;
     }
+  }
+
+  // Structured extraction does not benefit from reasoning tokens; skipping them cuts seconds of latency.
+  const useFastMode = Boolean(options.fast) && !thinkingConfigUnsupported;
+  if (useFastMode) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
   }
 
   const body = {
@@ -359,6 +369,13 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
       if (errorText.includes('API_KEY_INVALID') || errorText.includes('API key not valid')) {
         const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
         throw new Error(friendlyMsg);
+      }
+
+      // Model does not accept thinkingConfig (or budget 0): remember and retry once without it
+      if (useFastMode && response.status === 400 && /thinking/i.test(errorText)) {
+        console.warn(`Model ${model} rejected thinkingConfig; retrying without fast mode.`);
+        thinkingConfigUnsupported = true;
+        return await callGemini(contents, systemInstruction, model, { ...options, isRetry: true });
       }
 
       // If 404 (model missing) or 503 (model overloaded) on PRIMARY, retry with FALLBACK ONCE
@@ -526,14 +543,11 @@ Specialized Pakistani / Desi Cuisine Guidelines:
   * If plain water or zero-calorie beverage, set is_water: true and estimate water_ml accurately.
 - Portion & User Context:
   * If the user provided notes (e.g. "ate 40%", "half plate", "light oil", "skinless chicken"), mathematically scale the final macros and calorie output to match that exact portion.
-- Non-Food Detection:
-  * If the photo does NOT contain recognizable food, ingredients, dishes, meals, or beverages (e.g. selfie, face, document, laptop, electronics, furniture, pet, empty background), you MUST set:
-  "is_no_food": true,
-  "calories": 0,
-  "protein": 0,
-  "carbs": 0,
-  "fat": 0,
-  "name": "Not a recognizable food"
+- Image Quality & Recognition Policy (IMPORTANT):
+  * ALWAYS assume the user is photographing something they are eating or drinking. Photos may be dim, angled, blurry, partially cropped, taken in a restaurant, or show food in a bowl, tray, foil, wrapper, or packaging.
+  * If ANY food, drink, snack, dish, ingredient, or packaged edible item is even partially visible, you MUST identify your best guess, estimate realistic macros, and lower the "confidence" value instead of rejecting the photo.
+  * Set "is_no_food": true ONLY when you are highly certain the image contains NOTHING edible at all (e.g. a selfie, a face, a document, a laptop, furniture, a pet, an empty table or a fully black/blank frame). In that case also set calories/protein/carbs/fat to 0 and "name": "Not a recognizable food".
+  * Never set "is_no_food": true together with a non-zero calorie estimate.
 
 Return ONLY a valid, raw JSON object (without markdown code fences) with the exact structure:
 {
@@ -574,21 +588,50 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
     },
   ];
 
-  const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
-    jsonMode: true,
-    responseSchema: FOOD_ANALYSIS_SCHEMA,
-  });
-  try {
-    const parsed = JSON.parse(cleanJsonText(rawOutput));
-    if (parsed.is_no_food) {
-      throw new Error('No food detected in photo. Please ensure food or a meal is clearly visible.');
+  const requestVision = async (extraInstruction = '') => {
+    const callContents = extraInstruction
+      ? [{ role: 'user', parts: [...imageParts, { text: `${promptInstruction}\n${extraInstruction}` }] }]
+      : contents;
+    const raw = await callGemini(callContents, systemPrompt, PRIMARY_MODEL, {
+      jsonMode: true,
+      responseSchema: FOOD_ANALYSIS_SCHEMA,
+      fast: true,
+      isRetry: Boolean(extraInstruction),
+    });
+    try {
+      return { raw, parsed: JSON.parse(cleanJsonText(raw)) };
+    } catch {
+      console.error('Failed to parse Gemini photo response:', raw);
+      throw new Error('AI was unable to parse the food structure. Please try another angle or enter details.');
     }
+  };
+
+  // The model sometimes sets is_no_food while still returning a perfectly good estimate.
+  const isGenuineNoFood = (p) => {
+    if (!p?.is_no_food) return false;
+    if (p.is_water === true) return false;
+    const label = String(p.name || '').toLowerCase();
+    const hasRealName = label.trim() && !label.includes('not a recognizable') && !label.includes('no food');
+    return !(hasRealName && Number(p.calories) > 0);
+  };
+
+  let { parsed } = await requestVision();
+  if (isGenuineNoFood(parsed)) {
+    // Second, more lenient pass before giving up on the photo (dim / angled shots are common).
+    ({ parsed } = await requestVision(
+      'IMPORTANT: A previous pass reported that no food was visible. Look again carefully - the photo may be dim, angled, blurry or partially cropped. If ANY food, drink, snack, dish or packaged edible item is visible, identify your best guess and estimate macros with a lower confidence. Only set is_no_food to true if the image clearly contains nothing edible.'
+    ));
+  }
+  if (isGenuineNoFood(parsed)) {
+    const noFoodError = new Error('No food detected in photo. Please ensure food or a meal is clearly visible.');
+    noFoodError.code = 'NO_FOOD';
+    throw noFoodError;
+  }
+  parsed.is_no_food = false;
+  try {
     return normalizeAnalysis(parsed);
   } catch (err) {
-    if (err.message && err.message.includes('No food detected')) {
-      throw err;
-    }
-    console.error('Failed to parse Gemini photo response:', rawOutput);
+    console.error('Failed to normalize Gemini photo response:', parsed, err);
     throw new Error('AI was unable to parse the food structure. Please try another angle or enter details.');
   }
 }
@@ -636,13 +679,20 @@ Extract the nutrition data and return ONLY a valid JSON object:
   const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
     jsonMode: true,
     responseSchema: NUTRITION_LABEL_SCHEMA,
+    fast: true,
   });
+  let parsed;
   try {
-    return normalizeAnalysis(JSON.parse(cleanJsonText(rawOutput)));
+    parsed = JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
     console.error('Failed to parse Gemini label response:', rawOutput);
     throw new Error('Could not clearly read the label. Make sure the Nutrition Facts table is well-lit.');
   }
+  if (parsed?.is_no_food && !(Number(parsed.calories) > 0)) {
+    throw new Error('No Nutrition Facts table detected. Please align the package nutrition label in clear view.');
+  }
+  parsed.is_no_food = false;
+  return normalizeAnalysis(parsed);
 }
 
 /**
@@ -709,6 +759,7 @@ Return ONLY a valid JSON object:
   const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
     jsonMode: true,
     responseSchema: FOOD_ANALYSIS_SCHEMA,
+    fast: true,
   });
   try {
     const cleaned = cleanJsonText(rawOutput);
@@ -883,7 +934,7 @@ Persona & Desi Nutritional Knowledge:
 - Keep responses under 220 words unless specifically asked for a full recipe.`;
 
   const contents = sanitizeChatHistory(chatHistory, userMessage, 7500);
-  return await callGemini(contents, systemPrompt);
+  return await callGemini(contents, systemPrompt, CHAT_MODEL, { fast: true });
 }
 
 /**
@@ -905,7 +956,7 @@ Keep the tone encouraging, warm, and under 120 words.`;
 - Calories Burned via Exercise: ${dailySummary.totalBurned} kcal (${dailySummary.activeMinutes} mins)`;
 
   const contents = [{ role: 'user', parts: [{ text: prompt }] }];
-  return await callGemini(contents, systemPrompt);
+  return await callGemini(contents, systemPrompt, PRIMARY_MODEL, { fast: true });
 }
 
 /**
@@ -977,6 +1028,7 @@ Return ONLY valid JSON with this structure:
   const contents = [{ role: 'user', parts: [{ text: 'Generate meal plan matching these exact macros.' }] }];
   const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
     jsonMode: true,
+    fast: true,
   });
   try {
     return normalizeMealPlan(JSON.parse(cleanJsonText(rawOutput)));
@@ -1019,6 +1071,7 @@ Return ONLY valid JSON with this exact schema:
   const contents = [{ role: 'user', parts: [{ text: text.trim() }] }];
   const rawOutput = await callGemini(contents, systemPrompt, PRIMARY_MODEL, {
     jsonMode: true,
+    fast: true,
   });
 
   try {

@@ -26,7 +26,7 @@ function harness(file, extraMocks = {}) {
       }
     },
   };
-  const native = { StyleSheet: { create: x => x }, Platform: { OS: 'web' },
+  const native = { StyleSheet: { create: x => x }, Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
     Animated: { Value: class { setValue() {} interpolate() { return 0; } },
       timing: () => ({}), sequence: () => ({}), loop: () => ({ start() {}, stop() {} }) },
   };
@@ -191,4 +191,37 @@ test('Quick meal same-frame double taps write only one record', async () => {
   const handler = app.find(n => n.type === 'Button').props.onPress;
   const saving = handler(); await handler();
   assert.equal(writes, 1); write.resolve(); await saving;
+});
+
+test('Shutter capture immediately unmounts live CameraScanner into analysis view and Cancel restores camera', async () => {
+  const vision = deferred();
+  const store = selector => selector({ addMeal: async () => {}, logWater: async () => {} });
+  store.getState = () => ({ selectedDate: '2026-10-01' });
+  const app = harness('src/screens/LogMealScreen.js', {
+    [geminiPath]: { analyzeFoodPhoto: () => vision.promise },
+    [databasePath]: { useNutritionStore: store },
+    [path.resolve('src/services/barcodeService')]: {},
+  });
+  app.render({ navigation: { navigate() {} } });
+
+  const scanner = app.find(n => n.type === 'CameraScanner');
+  assert.ok(scanner, 'Live CameraScanner should be mounted initially');
+
+  // 1. Hardware shutter completes -> onCaptureStart fires immediately
+  scanner.props.onCaptureStart('file:///captured-meal.jpg');
+  app.render();
+
+  // Live CameraScanner must be unmounted so camera closes immediately
+  assert.equal(app.find(n => n.type === 'CameraScanner'), undefined);
+  assert.ok(app.find(n => n.type === 'Image' && n.props.source?.uri === 'file:///captured-meal.jpg'));
+
+  // 2. User taps Cancel & Retake before vision resolves
+  const cancelBtn = app.find(n => n.type === 'TouchableOpacity' && n.props.accessibilityLabel === 'Cancel analysis');
+  assert.ok(cancelBtn);
+  cancelBtn.props.onPress();
+  app.render();
+
+  // Live CameraScanner is restored
+  assert.ok(app.find(n => n.type === 'CameraScanner'));
+  app.unmount();
 });

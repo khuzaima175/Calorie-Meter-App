@@ -50,11 +50,15 @@ export default function FoodAnalysisResult({
   const [waterMl, setWaterMl] = useState(detectedMl);
 
   // Non-food / empty recognition check (water is valid hydration!)
+  const normalizedName = (analysis?.name || '').toLowerCase();
+  const looksLikeNoFoodName =
+    normalizedName.includes('no food') || normalizedName.includes('not a recognizable');
   const isNoFoodDetected =
     !isWater &&
-    (!analysis?.name ||
-      analysis.name.toLowerCase().includes('no food') ||
-      (Number(calories) === 0 && (!name.trim() || name.toLowerCase().includes('no food'))));
+    (analysis?.is_no_food === true ||
+      !analysis?.name ||
+      looksLikeNoFoodName ||
+      (Number(calories) === 0 && (!name.trim() || looksLikeNoFoodName)));
 
   const handleConfirmSave = () => {
     if (isNoFoodDetected || isSaving) return;

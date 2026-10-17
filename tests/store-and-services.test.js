@@ -135,3 +135,47 @@ test('Clearing AI state discards an in-flight meal plan', async () => {
   assert.equal(store.getState().mealPlan, null);
   assert.equal(store.getState().isGeneratingPlan, false);
 });
+
+test('Notification service configures Android channel, schedules 4 daily reminders, and sends test/confirmation banners', async () => {
+  const scheduled = [];
+  const channels = [];
+  let permStatus = 'granted';
+  const notificationsMock = {
+    AndroidImportance: { HIGH: 4 },
+    SchedulableTriggerInputTypes: { DAILY: 'daily' },
+    setNotificationHandler() {},
+    setNotificationChannelAsync: async (id, cfg) => { channels.push({ id, cfg }); },
+    getPermissionsAsync: async () => ({ status: permStatus }),
+    requestPermissionsAsync: async () => ({ status: permStatus }),
+    cancelAllScheduledNotificationsAsync: async () => { scheduled.length = 0; },
+    scheduleNotificationAsync: async (item) => { scheduled.push(item); },
+    getAllScheduledNotificationsAsync: async () => scheduled.filter((s) => s.trigger !== null),
+  };
+
+  const svc = createLoader({
+    'react-native': { Platform: { OS: 'android' } },
+    'expo-notifications': notificationsMock,
+  })('src/services/notificationService.js');
+
+  // 1. First launch when permission is already granted (e.g. Expo Go) with 0 scheduled reminders
+  const launched = await svc.ensureRemindersOnFirstLaunch();
+  assert.equal(launched, true);
+  assert.equal(channels[0].id, 'reminders');
+  assert.equal(scheduled.length, 4);
+  assert.equal(await svc.areRemindersScheduled(), true);
+
+  // 2. Explicit toggle with confirmation banner adds a 5th immediate (trigger: null) notification
+  await svc.scheduleDailyReminders({ sendConfirmation: true });
+  assert.equal(scheduled.length, 5);
+  assert.equal(scheduled.at(-1).trigger, null);
+
+  // 3. Test notification fires immediately
+  const testSent = await svc.sendTestNotification();
+  assert.equal(testSent, true);
+  assert.equal(scheduled.at(-1).trigger, null);
+
+  // 4. Cancelling clears all reminders and prevents re-scheduling in the same session
+  await svc.cancelAllReminders();
+  assert.equal(await svc.areRemindersScheduled(), false);
+  assert.equal(await svc.ensureRemindersOnFirstLaunch(), false);
+});

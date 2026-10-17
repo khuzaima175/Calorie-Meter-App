@@ -8,6 +8,7 @@ import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-c
 import { initDatabase, getTodayString } from './services/databaseService';
 import { useProfileStore } from './stores/useProfileStore';
 import { useNutritionStore } from './stores/useNutritionStore';
+import { ensureRemindersOnFirstLaunch } from './services/notificationService';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingShimmer from './components/LoadingShimmer';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -59,6 +60,8 @@ function AppBootstrapper() {
         if (loadError) throw new Error(loadError);
 
         if (mounted) setIsReady(true);
+        // Fire-and-forget: asks for notification permission once on first launch and schedules reminders
+        ensureRemindersOnFirstLaunch();
       } catch (err) {
         console.error('Failed during app bootstrapping:', err);
         if (mounted) setBootError(err.message || 'Could not load your saved data.');

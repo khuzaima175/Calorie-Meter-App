@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Image,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,6 +50,7 @@ const MEAL_TYPES = [
 
 export default function LogMealScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const addMeal = useNutritionStore((s) => s.addMeal);
   const logWater = useNutritionStore((s) => s.logWater);
 
@@ -60,6 +62,7 @@ export default function LogMealScreen({ navigation }) {
   const [capturedImageUri, setCapturedImageUri] = useState(null);
   const [capturedImageUris, setCapturedImageUris] = useState([]);
   const barcodeReqIdRef = useRef(0);
+  const pendingCaptureId = useRef(null);
   const mounted = useRef(true);
   const saveLock = useRef(false);
   const scanAnim = useRef(new Animated.Value(0)).current;
@@ -158,12 +161,53 @@ export default function LogMealScreen({ navigation }) {
     setCapturedImageUris([]);
   };
 
+  // Direct tab jump that is safe to call right after a request fails/finishes.
+  const goToTab = (tabKey) => {
+    setActiveTab(tabKey);
+    setAnalysisResult(null);
+    setCapturedImageUri(null);
+    setCapturedImageUris([]);
+  };
+
+  // Called by scanners the instant the shutter returns a frame, before on-device resizing finishes.
+  const handleCaptureStart = (uri) => {
+    barcodeReqIdRef.current++;
+    pendingCaptureId.current = barcodeReqIdRef.current;
+    if (uri) setCapturedImageUri(uri);
+    setIsProcessing(true);
+    setStatusMessage('Preparing your photo...');
+  };
+
+  // Returns true when the user cancelled between shutter tap and hand-off (so analysis must not start).
+  const consumeCancelledCapture = () => {
+    if (pendingCaptureId.current === null) return false;
+    const cancelled = pendingCaptureId.current !== barcodeReqIdRef.current;
+    pendingCaptureId.current = null;
+    return cancelled;
+  };
+
+  // Cancels any in-flight analysis / capture and returns to the live viewfinder.
+  const handleCancelProcessing = () => {
+    barcodeReqIdRef.current++;
+    setIsProcessing(false);
+    setStatusMessage('');
+    setCapturedImageUri(null);
+    setCapturedImageUris([]);
+  };
+
+  // Scanner failed after capture-start; no hand-off will follow, so clear the pending marker too.
+  const handleAbortCapture = () => {
+    pendingCaptureId.current = null;
+    handleCancelProcessing();
+  };
+
   // 1. Photo Analysis Handler (supports multi-image & Pakistani meal context)
   const handleCapturePhoto = async (capturePayload) => {
+    if (consumeCancelledCapture()) return;
     const { uri, base64, mimeType, photos = [], userNote = '', mealPeriod } = capturePayload;
     const currentReqId = ++barcodeReqIdRef.current;
     setIsProcessing(true);
-    setStatusMessage('Analyzing Pakistani / Desi meal with Gemini AI...');
+    setStatusMessage('Identifying your food with Gemini AI...');
 
     const uriList = photos.length > 0 ? photos.map((p) => p.uri) : [uri];
     setCapturedImageUri(uriList[0]);
@@ -178,19 +222,33 @@ export default function LogMealScreen({ navigation }) {
       });
       console.log(`[Perf] 🌐 Gemini Vision API roundtrip & inference: ${Date.now() - tStart}ms`);
       if (currentReqId !== barcodeReqIdRef.current) return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setAnalysisResult(result);
     } catch (err) {
       if (currentReqId !== barcodeReqIdRef.current) return;
-      Alert.alert(
-        'Analysis Failed',
-        err.message || 'Could not analyze photo. Please try again or type the meal.'
-      );
       setCapturedImageUri(null);
       setCapturedImageUris([]);
+      if (err?.code === 'NO_FOOD') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        Alert.alert(
+          "Couldn't Spot Any Food",
+          'Try moving closer, adding more light, or keeping the plate centered. You can also describe the meal instead.',
+          [
+            { text: 'Retake', style: 'cancel' },
+            { text: 'Describe Instead', onPress: () => goToTab('text') },
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Analysis Failed',
+          err.message || 'Could not analyze photo. Please try again or type the meal.'
+        );
+      }
     } finally {
-      if (currentReqId !== barcodeReqIdRef.current) return;
-      setIsProcessing(false);
-      setStatusMessage('');
+      if (currentReqId === barcodeReqIdRef.current) {
+        setIsProcessing(false);
+        setStatusMessage('');
+      }
     }
   };
 
@@ -229,9 +287,10 @@ export default function LogMealScreen({ navigation }) {
 
   // 3. Label OCR Handler
   const handleCaptureLabel = async ({ uri, base64, mimeType }) => {
+    if (consumeCancelledCapture()) return;
     const currentReqId = ++barcodeReqIdRef.current;
     setIsProcessing(true);
-    setStatusMessage('Reading Nutrition Facts table...');
+    setStatusMessage('Reading the Nutrition Facts table...');
     setCapturedImageUri(uri);
     const tStart = Date.now();
 
@@ -239,18 +298,20 @@ export default function LogMealScreen({ navigation }) {
       const result = await analyzeNutritionLabel(base64, mimeType);
       console.log(`[Perf] 🌐 Gemini Label OCR API roundtrip & inference: ${Date.now() - tStart}ms`);
       if (currentReqId !== barcodeReqIdRef.current) return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setAnalysisResult(result);
     } catch (err) {
       if (currentReqId !== barcodeReqIdRef.current) return;
       Alert.alert(
-        'OCR Failed',
-        err.message || 'Could not read nutrition facts. Make sure label is in clear view.'
+        'Could Not Read Label',
+        err.message || 'Could not read nutrition facts. Make sure the label is in clear view.'
       );
       setCapturedImageUri(null);
     } finally {
-      if (currentReqId !== barcodeReqIdRef.current) return;
-      setIsProcessing(false);
-      setStatusMessage('');
+      if (currentReqId === barcodeReqIdRef.current) {
+        setIsProcessing(false);
+        setStatusMessage('');
+      }
     }
   };
 
@@ -358,7 +419,15 @@ export default function LogMealScreen({ navigation }) {
         fat: fatNum,
       });
 
-      if (mounted.current) navigation.navigate('Dashboard');
+      if (mounted.current) {
+        setManualName('');
+        setManualPortion('1 serving');
+        setManualCalories('');
+        setManualProtein('');
+        setManualCarbs('');
+        setManualFat('');
+        navigation.navigate('Dashboard');
+      }
     } catch (err) {
       if (mounted.current) Alert.alert('Save Failed', err.message || 'Could not save meal.');
     } finally {
@@ -383,6 +452,7 @@ export default function LogMealScreen({ navigation }) {
       setAnalysisResult(null);
       setCapturedImageUri(null);
       setCapturedImageUris([]);
+      setTextDescription('');
       navigation.navigate('Dashboard');
     } catch (err) {
       if (mounted.current) Alert.alert('Save Failed', err.message || 'Could not save meal data.');
@@ -393,7 +463,127 @@ export default function LogMealScreen({ navigation }) {
   };
 
   // ==========================================
-  // VIEW A: DEDICATED FULL-SCREEN CAMERA VIEW
+  // VIEW A1: DEDICATED CAPTURED PHOTO ANALYSIS VIEW
+  // Transitions immediately out of the live camera upon shutter click
+  // ==========================================
+  if (isCameraMode && isProcessing) {
+    const previewBoxHeight = Math.min(340, Math.max(220, windowHeight * 0.42));
+    return (
+      <View
+        style={[
+          styles.analysisScreenContainer,
+          { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 16) + 80 },
+        ]}
+      >
+        {/* Top Header */}
+        <View style={styles.analysisHeaderRow}>
+          <TouchableOpacity
+            style={styles.closeCameraBtn}
+            onPress={handleCancelProcessing}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel analysis and return to camera"
+          >
+            <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.analysisHeaderTitle}>
+              {activeTab === 'label'
+                ? 'Scanning Nutrition Label'
+                : activeTab === 'barcode'
+                ? 'Looking Up Product'
+                : 'Analyzing Captured Meal'}
+            </Text>
+            <Text style={styles.analysisHeaderSub}>
+              Live camera paused while AI inspects your capture
+            </Text>
+          </View>
+        </View>
+
+        {/* Framed Captured Photo with Laser Scan */}
+        <View style={[styles.capturedFrameCard, { height: previewBoxHeight }]}>
+          {capturedImageUri ? (
+            <Image
+              source={{ uri: capturedImageUri }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.barcodePlaceholderFrame}>
+              <Ionicons name="barcode-outline" size={64} color={colors.sageBright} />
+            </View>
+          )}
+          <View style={styles.scanningPhotoTint} />
+
+          {/* Corner Reticles */}
+          <View style={[styles.frameCorner, styles.frameCornerTL]} />
+          <View style={[styles.frameCorner, styles.frameCornerTR]} />
+          <View style={[styles.frameCorner, styles.frameCornerBL]} />
+          <View style={[styles.frameCorner, styles.frameCornerBR]} />
+
+          {capturedImageUris.length > 1 && (
+            <View style={styles.multiPlateCountPill}>
+              <Ionicons name="images" size={12} color="#08170E" />
+              <Text style={styles.multiPlateCountText}>
+                {capturedImageUris.length} Plates Captured
+              </Text>
+            </View>
+          )}
+
+          {/* Animated Laser Beam inside Frame */}
+          <Animated.View
+            style={[
+              styles.scanningLaserBeam,
+              {
+                transform: [
+                  {
+                    translateY: scanAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [16, previewBoxHeight - 20],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.scanningLaserGlow} />
+            <View style={styles.scanningLaserLine} />
+          </Animated.View>
+        </View>
+
+        {/* Status Card */}
+        <View style={styles.processingCard}>
+          <View style={styles.processingBadge}>
+            <Ionicons name="sparkles" size={13} color={colors.sageBright} />
+            <Text style={styles.processingBadgeText}>
+              {activeTab === 'barcode' ? 'PRODUCT LOOKUP' : 'GEMINI VISION AI'}
+            </Text>
+          </View>
+          <ActivityIndicator size="large" color={colors.sageBright} style={{ marginTop: 14, marginBottom: 10 }} />
+          <Text style={styles.processingTitle}>
+            {activeTab === 'label'
+              ? 'Reading Nutrition Label'
+              : activeTab === 'barcode'
+              ? 'Finding Product'
+              : 'Analyzing Your Meal'}
+          </Text>
+          <Text style={styles.processingText}>{statusMessage || 'Working on it...'}</Text>
+          <TouchableOpacity
+            style={styles.processingCancelBtn}
+            onPress={handleCancelProcessing}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel analysis"
+          >
+            <Text style={styles.processingCancelText}>Cancel & Retake</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ==========================================
+  // VIEW A2: DEDICATED FULL-SCREEN LIVE CAMERA VIEW
   // ==========================================
   if (isCameraMode) {
     return (
@@ -402,12 +592,16 @@ export default function LogMealScreen({ navigation }) {
         {activeTab === 'photo' && (
           <CameraScanner
             onCapturePhoto={handleCapturePhoto}
+            onCaptureStart={handleCaptureStart}
+            onCaptureAbort={handleAbortCapture}
             isProcessing={isProcessing}
           />
         )}
         {activeTab === 'label' && (
           <NutritionLabelScanner
             onCaptureLabel={handleCaptureLabel}
+            onCaptureStart={handleCaptureStart}
+            onCaptureAbort={handleAbortCapture}
             isProcessing={isProcessing}
           />
         )}
@@ -416,36 +610,6 @@ export default function LogMealScreen({ navigation }) {
             onScanBarcode={handleScanBarcode}
             isProcessing={isProcessing}
           />
-        )}
-
-        {/* 1b. Frozen Captured Frame & Holographic Laser Scan during Processing */}
-        {isProcessing && capturedImageUri && (
-          <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-            <Image
-              source={{ uri: capturedImageUri }}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode="cover"
-            />
-            <View style={styles.scanningPhotoTint} />
-            <Animated.View
-              style={[
-                styles.scanningLaserBeam,
-                {
-                  transform: [
-                    {
-                      translateY: scanAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [100, 560],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <View style={styles.scanningLaserGlow} />
-              <View style={styles.scanningLaserLine} />
-            </Animated.View>
-          </View>
         )}
 
         {/* 2. Floating Top Header & 5-Column Segmented Bar (respects insets.top) */}
@@ -492,21 +656,6 @@ export default function LogMealScreen({ navigation }) {
             })}
           </View>
         </View>
-
-        {/* 3. Processing Overlay */}
-        {isProcessing && (
-          <View style={styles.processingOverlay}>
-            <View style={styles.processingCard}>
-              <View style={styles.processingBadge}>
-                <Ionicons name="sparkles" size={13} color={colors.sageBright} />
-                <Text style={styles.processingBadgeText}>GEMINI VISION AI</Text>
-              </View>
-              <ActivityIndicator size="large" color={colors.sageBright} style={{ marginTop: 14, marginBottom: 10 }} />
-              <Text style={styles.processingTitle}>Analyzing Food Plate</Text>
-              <Text style={styles.processingText}>{statusMessage || 'Detecting Pakistani ingredients & portion size...'}</Text>
-            </View>
-          </View>
-        )}
       </View>
     );
   }
@@ -589,6 +738,15 @@ export default function LogMealScreen({ navigation }) {
               <ActivityIndicator size="large" color={colors.sageBright} />
               <Text style={styles.processingTitle}>Analyzing with AI</Text>
               <Text style={styles.processingText}>{statusMessage}</Text>
+              <TouchableOpacity
+                style={styles.processingCancelBtn}
+                onPress={handleCancelProcessing}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel analysis"
+              >
+                <Text style={styles.processingCancelText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1138,6 +1296,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
+  processingCancelBtn: {
+    marginTop: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 9,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  processingCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
   aiManualEstimateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1162,5 +1334,98 @@ const styles = StyleSheet.create({
   },
   aiManualEstimateBtnTextDisabled: {
     color: colors.textTertiary,
+  },
+  analysisScreenContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    paddingHorizontal: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  analysisHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 8,
+  },
+  analysisHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  analysisHeaderSub: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  capturedFrameCard: {
+    width: '100%',
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1.5,
+    borderColor: 'rgba(125, 175, 142, 0.45)',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  barcodePlaceholderFrame: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frameCorner: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderColor: colors.sageBright,
+    zIndex: 5,
+  },
+  frameCornerTL: {
+    top: 14,
+    left: 14,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderTopLeftRadius: 8,
+  },
+  frameCornerTR: {
+    top: 14,
+    right: 14,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderTopRightRadius: 8,
+  },
+  frameCornerBL: {
+    bottom: 14,
+    left: 14,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderBottomLeftRadius: 8,
+  },
+  frameCornerBR: {
+    bottom: 14,
+    right: 14,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderBottomRightRadius: 8,
+  },
+  multiPlateCountPill: {
+    position: 'absolute',
+    bottom: 14,
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.sageBright,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    zIndex: 6,
+  },
+  multiPlateCountText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#08170E',
+    marginLeft: 5,
   },
 });

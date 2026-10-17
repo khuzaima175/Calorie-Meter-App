@@ -14,6 +14,7 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { format, parseISO } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNutritionStore } from '../stores/useNutritionStore';
@@ -44,6 +45,7 @@ export default function DashboardScreen({ navigation }) {
   const profile = useProfileStore((s) => s.profile);
   const goals = useProfileStore((s) => s.goals);
 
+  const isViewingToday = selectedDate === getTodayString();
   const [refreshing, setRefreshing] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [activeMealType, setActiveMealType] = useState('breakfast');
@@ -239,14 +241,14 @@ export default function DashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('Activity')}
             activeOpacity={0.75}
             accessibilityRole="button"
-            accessibilityLabel={`Today's workouts: ${dailyTotals.activeMinutes} active minutes, ${dailyTotals.caloriesBurned} calories burned`}
+            accessibilityLabel={`: ${dailyTotals.activeMinutes} active minutes, ${dailyTotals.caloriesBurned} calories burned`}
           >
             <View style={styles.actLeft}>
               <View style={styles.actIcon}>
                 <Ionicons name="flame" size={18} color={colors.caloriesBurned} />
               </View>
               <View>
-                <Text style={styles.actTitle}>Today's Workouts</Text>
+                <Text style={styles.actTitle}>{isViewingToday ? "Today's Workouts" : 'Workouts'}</Text>
                 <Text style={styles.actSub}>
                   {dailyTotals.activeMinutes} active minutes logged
                 </Text>
@@ -263,7 +265,7 @@ export default function DashboardScreen({ navigation }) {
         {/* Meal Categories */}
         <Animated.View style={{ opacity: fadeAnims[3], transform: [{ translateY: slideAnims[3] }] }}>
         <View style={styles.mealsHeader}>
-          <Text style={styles.sectionTitle}>{selectedDate === getTodayString() ? "Today's Meals" : 'Meals for ' + selectedDate}</Text>
+          <Text style={styles.sectionTitle}>{isViewingToday ? "Today's Meals" : 'Meals - ' + format(parseISO(selectedDate), 'EEE, MMM d')}</Text>
           <TouchableOpacity
             style={styles.aiScanBanner}
             onPress={() => navigation.navigate('LogMeal')}

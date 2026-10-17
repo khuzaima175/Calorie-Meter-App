@@ -10,6 +10,7 @@ import { colors, radius, typography } from '../theme/colors';
 import { formatTimeString } from '../services/databaseService';
 
 const CATEGORY_ICONS = {
+  walking: { icon: 'walk-outline', color: '#7DAF8E' },
   cardio: { icon: 'flame-outline', color: '#E07A5F' },
   strength: { icon: 'barbell-outline', color: '#C9956B' },
   flexibility: { icon: 'body-outline', color: '#81B29A' },

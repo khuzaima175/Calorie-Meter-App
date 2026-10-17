@@ -20,12 +20,13 @@ import * as Haptics from 'expo-haptics';
 import Button from './Button';
 import { colors, radius, typography } from '../theme/colors';
 
-export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = false }) {
+export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, onCaptureAbort, isProcessing = false }) {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [facing, setFacing] = useState('back');
   const [cameraKey, setCameraKey] = useState(1);
+  const [isCapturing, setIsCapturing] = useState(false);
   const cameraRef = useRef(null);
   const isCapturingRef = useRef(false);
 
@@ -63,8 +64,10 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
   const handleCapture = async () => {
     if (!cameraRef.current || isProcessing || isCapturingRef.current) return;
     isCapturingRef.current = true;
+    setIsCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const t0 = Date.now();
+    let handedOff = false;
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -75,25 +78,34 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
       console.log(`[Perf] 📸 Label camera capture: ${captureMs}ms`);
 
       if (photo?.uri) {
+        onCaptureStart?.(photo.uri);
+        handedOff = true;
         const optimized = await optimizeLabelImage(photo.uri);
         if (optimized?.base64) {
           onCaptureLabel(optimized);
         } else {
+          onCaptureAbort?.();
           Alert.alert('Label Capture Error', 'Could not process label photo for OCR. Please try again.');
         }
+      } else {
+        Alert.alert('Camera Error', 'Could not capture the label from the camera sensor.');
       }
     } catch (err) {
       console.error('Failed to capture label:', err);
+      if (handedOff) onCaptureAbort?.();
       Alert.alert('Camera Error', err?.message || 'Could not capture label.');
     } finally {
       isCapturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
   const handlePickFromGallery = async () => {
     if (isProcessing || isCapturingRef.current) return;
     isCapturingRef.current = true;
+    setIsCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    let handedOff = false;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -103,18 +115,23 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
+        onCaptureStart?.(asset.uri);
+        handedOff = true;
         const optimized = await optimizeLabelImage(asset.uri);
         if (optimized?.base64) {
           onCaptureLabel(optimized);
         } else {
+          onCaptureAbort?.();
           Alert.alert('Gallery Error', 'Could not process label image.');
         }
       }
     } catch (err) {
       console.error('Failed to pick label image:', err);
+      if (handedOff) onCaptureAbort?.();
       Alert.alert('Gallery Error', 'Failed to pick image from gallery.');
     } finally {
       isCapturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
@@ -234,14 +251,16 @@ export default function NutritionLabelScanner({ onCaptureLabel, isProcessing = f
 
           {/* Shutter Button */}
           <TouchableOpacity accessibilityRole="button"
-            style={[styles.shutterOuter, isProcessing && styles.shutterOuterDisabled]}
+            accessibilityLabel="Capture nutrition label"
+            accessibilityState={{ busy: isProcessing || isCapturing, disabled: isProcessing || isCapturing }}
+            style={[styles.shutterOuter, (isProcessing || isCapturing) && styles.shutterOuterDisabled]}
             onPress={handleCapture}
-            disabled={isProcessing}
+            disabled={isProcessing || isCapturing}
             activeOpacity={0.8}
           >
             <View style={styles.shutterRing}>
               <View style={styles.shutterInner}>
-                {isProcessing ? (
+                {isProcessing || isCapturing ? (
                   <ActivityIndicator size="small" color={colors.textInverse} />
                 ) : (
                   <Ionicons name="scan-outline" size={28} color={colors.textInverse} />

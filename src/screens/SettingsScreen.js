@@ -30,7 +30,12 @@ import {
   exportAllDataJSON,
   importAllDataJSON,
 } from '../services/databaseService';
-import { scheduleDailyReminders, cancelAllReminders } from '../services/notificationService';
+import {
+  scheduleDailyReminders,
+  cancelAllReminders,
+  areRemindersScheduled,
+  sendTestNotification,
+} from '../services/notificationService';
 import { testGeminiApiKey } from '../services/geminiService';
 import Input from '../components/Input';
 import Button from '../components/Button';
@@ -42,6 +47,7 @@ const ACTIVITY_LEVELS = [
   { key: 'light', label: 'Lightly Active', sub: '1-3 light workouts/week' },
   { key: 'moderate', label: 'Moderately Active', sub: '3-5 sports/gym sessions' },
   { key: 'active', label: 'Very Active', sub: '6-7 intense workout sessions' },
+  { key: 'very_active', label: 'Extra Active / Athlete', sub: 'Daily intense training or physical job' },
 ];
 
 const GOAL_TYPES = [
@@ -86,50 +92,70 @@ export default function SettingsScreen() {
   const [notificationsBusy, setNotificationsBusy] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS !== 'web') {
-      import('expo-notifications').then((Notifications) => {
-        Notifications.getAllScheduledNotificationsAsync().then((scheduled) => {
-          if (scheduled && scheduled.length > 0) {
-            setNotificationsEnabled(true);
-          }
-        }).catch(() => {});
-      }).catch(() => {});
-    }
+    let active = true;
+    areRemindersScheduled()
+      .then((scheduled) => {
+        if (active) setNotificationsEnabled(Boolean(scheduled));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleToggleNotifications = async (val) => {
     if (notificationsBusy) return;
     setNotificationsBusy(true);
     try {
-    if (Platform.OS === 'web') {
-      Alert.alert('Web Notice', 'Local push notifications are available on iOS and Android devices.');
-      return;
-    }
-    if (val) {
-      const success = await scheduleDailyReminders();
-      if (success) {
-        setNotificationsEnabled(true);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        Alert.alert(
-          'Daily Reminders Scheduled! ⏰',
-          'You will receive 4 daily notifications:\n• 8:30 AM — Breakfast Reminder\n• 1:15 PM — Lunch Photo Reminder\n• 4:30 PM — Afternoon Hydration Check\n• 7:45 PM — Dinner & Daily Review'
-        );
+      if (val) {
+        const success = await scheduleDailyReminders({ sendConfirmation: true });
+        if (success) {
+          setNotificationsEnabled(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          Alert.alert(
+            'Daily Reminders Scheduled! ⏰',
+            'You will receive 4 daily notifications:\n• 8:30 AM — Breakfast Reminder\n• 1:15 PM — Lunch Photo Reminder\n• 4:30 PM — Afternoon Hydration Check\n• 7:45 PM — Dinner & Daily Review'
+          );
+        } else {
+          setNotificationsEnabled(false);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+          Alert.alert(
+            'Permission Required',
+            'Notification permission was not granted. Please enable notifications in your device settings to receive meal and hydration reminders.'
+          );
+        }
       } else {
+        await cancelAllReminders();
         setNotificationsEnabled(false);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Reminders Paused', 'All scheduled meal and hydration reminders have been cancelled.');
+      }
+    } catch (error) {
+      Alert.alert('Reminder Update Failed', error.message);
+    } finally {
+      setNotificationsBusy(false);
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    if (notificationsBusy) return;
+    setNotificationsBusy(true);
+    try {
+      const sent = await sendTestNotification();
+      if (sent) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Test Notification Sent! 🔔', 'Check your notification banner or system tray.');
+      } else {
         Alert.alert(
-          'Permission Required',
-          'Notification permission was not granted. Please enable notifications in your device settings to receive meal and hydration reminders.'
+          'Notification Blocked',
+          'Could not display a notification. Please check that notifications are allowed for CalorieSnap Pro in your device settings.'
         );
       }
-    } else {
-      await cancelAllReminders();
-      setNotificationsEnabled(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      Alert.alert('Reminders Paused', 'All scheduled meal and hydration reminders have been cancelled.');
+    } catch (err) {
+      Alert.alert('Notification Error', err?.message || 'Failed to send test notification.');
+    } finally {
+      setNotificationsBusy(false);
     }
-    } catch (error) { Alert.alert('Reminder Update Failed', error.message); }
-    finally { setNotificationsBusy(false); }
   };
 
   const [isSaving, setIsSaving] = useState(false);
@@ -691,6 +717,17 @@ export default function SettingsScreen() {
               </View>
             </View>
           ) : null}
+
+          <Button
+            title="Send Test Notification"
+            onPress={handleSendTestNotification}
+            variant="secondary"
+            size="sm"
+            loading={notificationsBusy}
+            style={{ marginTop: 12 }}
+            accessibilityLabel="Send Test Notification"
+            accessibilityRole="button"
+          />
         </Card>
 
         {/* Section: Gemini AI Configuration */}

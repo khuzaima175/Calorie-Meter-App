@@ -36,7 +36,7 @@ const PORTION_CHIPS = [
   { label: '🍗 Extra Meat / Protein', value: 'Extra portion of chicken / meat' },
 ];
 
-export default function CameraScanner({ onCapturePhoto, isProcessing = false }) {
+export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptureAbort, isProcessing = false }) {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState('back');
@@ -44,6 +44,8 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const [userNote, setUserNote] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [mealPeriod, setMealPeriod] = useState(getCurrentMealPeriod());
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isAddingAngle, setIsAddingAngle] = useState(false);
   const cameraRef = useRef(null);
   const isCapturingRef = useRef(false);
 
@@ -56,18 +58,18 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     return () => clearInterval(interval);
   }, []);
 
-  // Helper to resize and compress photos on-device (shrinks 5MB down to ~120KB for 1-2s recognition)
+  // Helper to resize and compress photos on-device (shrinks 5MB down to ~85KB for fast upload & recognition)
   const optimizeImageForAI = async (uri) => {
     const t0 = Date.now();
     try {
       const manipResult = await ImageManipulator.manipulateAsync(
         uri,
-        [{ resize: { width: 1024 } }],
-        { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        [{ resize: { width: 896 } }],
+        { compress: 0.62, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
       const resizeMs = Date.now() - t0;
       const sizeKb = Math.round(((manipResult.base64?.length || 0) * 0.75) / 1024);
-      console.log(`[Perf] ✂️ Photo resized to 1024px in ${resizeMs}ms (JPEG payload: ~${sizeKb} KB)`);
+      console.log(`[Perf] ✂️ Photo resized to 896px in ${resizeMs}ms (JPEG payload: ~${sizeKb} KB)`);
       return {
         uri: manipResult.uri,
         base64: manipResult.base64,
@@ -83,8 +85,10 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const handleDirectSnapAndAnalyze = async () => {
     if (!cameraRef.current || isProcessing || isCapturingRef.current) return;
     isCapturingRef.current = true;
+    setIsCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const t0 = Date.now();
+    let handedOff = false;
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -99,8 +103,13 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         return;
       }
 
+      // Immediately transition parent UI out of live camera into captured photo analysis view
+      onCaptureStart?.(photo.uri);
+      handedOff = true;
+
       const optimized = await optimizeImageForAI(photo.uri);
       if (!optimized?.base64) {
+        onCaptureAbort?.();
         Alert.alert('Optimization Error', 'Could not process photo for AI. Please try again.');
         return;
       }
@@ -115,9 +124,11 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
       });
     } catch (err) {
       console.error('Direct capture error:', err);
+      if (handedOff) onCaptureAbort?.();
       Alert.alert('Camera Error', err?.message || 'Could not capture photo.');
     } finally {
       isCapturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
@@ -125,6 +136,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const handleTakePhoto = async () => {
     if (!cameraRef.current || isProcessing || isCapturingRef.current || photos.length >= 4) return;
     isCapturingRef.current = true;
+    setIsCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const t0 = Date.now();
 
@@ -140,6 +152,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
         const optimized = await optimizeImageForAI(photo.uri);
         if (optimized?.base64) {
           setPhotos((prev) => [...prev, optimized].slice(0, 4));
+          setIsAddingAngle(false);
         } else {
           Alert.alert('Optimization Error', 'Could not process photo for AI.');
         }
@@ -149,6 +162,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
       Alert.alert('Camera Error', 'Could not take photo: ' + err.message);
     } finally {
       isCapturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
@@ -156,6 +170,8 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
   const handleLaunchSystemCamera = async () => {
     if (photos.length >= 4 || isProcessing || isCapturingRef.current) return;
     isCapturingRef.current = true;
+    setIsCapturing(true);
+    let handedOff = false;
     try {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: false,
@@ -164,25 +180,49 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
-        const optimized = await optimizeImageForAI(asset.uri);
-        if (optimized?.base64) {
-          setPhotos((prev) => [...prev, optimized].slice(0, 4));
+        if (photos.length === 0) {
+          onCaptureStart?.(asset.uri);
+          handedOff = true;
+          const optimized = await optimizeImageForAI(asset.uri);
+          if (optimized?.base64) {
+            onCapturePhoto({
+              uri: optimized.uri,
+              base64: optimized.base64,
+              mimeType: optimized.mimeType || 'image/jpeg',
+              photos: [optimized],
+              userNote: userNote.trim(),
+              mealPeriod,
+            });
+          } else {
+            onCaptureAbort?.();
+            Alert.alert('Optimization Error', 'Could not process system camera photo.');
+          }
         } else {
-          Alert.alert('Optimization Error', 'Could not process system camera photo.');
+          const optimized = await optimizeImageForAI(asset.uri);
+          if (optimized?.base64) {
+            setPhotos((prev) => [...prev, optimized].slice(0, 4));
+            setIsAddingAngle(false);
+          } else {
+            Alert.alert('Optimization Error', 'Could not process system camera photo.');
+          }
         }
       }
     } catch (err) {
       console.error('System camera error:', err);
+      if (handedOff) onCaptureAbort?.();
       Alert.alert('Camera Error', 'Could not launch system camera.');
     } finally {
       isCapturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
-  // 3. Multi-Image Gallery Picker (sequential processing to prevent memory spikes)
+  // 3. Multi-Image Gallery Picker (instant analysis for 1 photo when tray is empty; tray mode for multi-select)
   const handlePickFromGallery = async () => {
     if (photos.length >= 4 || isProcessing || isCapturingRef.current) return;
     isCapturingRef.current = true;
+    setIsCapturing(true);
+    let handedOff = false;
     try {
       const remainingSlots = 4 - photos.length;
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -194,6 +234,26 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
       if (!result.canceled && result.assets?.length > 0) {
         const toAdd = result.assets.slice(0, remainingSlots);
+        if (photos.length === 0 && toAdd.length === 1) {
+          onCaptureStart?.(toAdd[0].uri);
+          handedOff = true;
+          const opt = await optimizeImageForAI(toAdd[0].uri);
+          if (opt?.base64) {
+            onCapturePhoto({
+              uri: opt.uri,
+              base64: opt.base64,
+              mimeType: opt.mimeType || 'image/jpeg',
+              photos: [opt],
+              userNote: userNote.trim(),
+              mealPeriod,
+            });
+          } else {
+            onCaptureAbort?.();
+            Alert.alert('Gallery Error', 'Could not process selected image.');
+          }
+          return;
+        }
+
         const newItems = [];
         for (const asset of toAdd) {
           const opt = await optimizeImageForAI(asset.uri);
@@ -206,26 +266,34 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
           Alert.alert('Gallery Error', 'Could not process selected image(s).');
         } else {
           setPhotos((prev) => [...prev, ...newItems].slice(0, 4));
+          setIsAddingAngle(false);
         }
       }
     } catch (err) {
       console.error('Gallery error:', err);
+      if (handedOff) onCaptureAbort?.();
       Alert.alert('Gallery Error', 'Failed to pick image from gallery.');
     } finally {
       isCapturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
   // Remove photo from tray
   const handleRemovePhoto = (index) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
+    setPhotos((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0) setIsAddingAngle(false);
+      return next;
+    });
   };
 
   // Submit all photos with optional user note & meal period
   const handleAnalyzeAll = () => {
     if (photos.length === 0 || isProcessing) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    onCaptureStart?.(photos[0].uri);
 
     onCapturePhoto({
       uri: photos[0].uri,
@@ -272,14 +340,24 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
     );
   }
 
+  const showFrozenTrayPreview = photos.length > 0 && !isAddingAngle;
+
   return (
     <View style={styles.container}>
-      {/* 1. Camera Viewport Full-Bleed */}
-      <CameraView
-        ref={cameraRef}
-        style={styles.cameraView}
-        facing={facing}
-      />
+      {/* 1. Camera Viewport or Captured Plate Preview */}
+      {showFrozenTrayPreview ? (
+        <Image
+          source={{ uri: photos[photos.length - 1].uri }}
+          style={styles.cameraView}
+          resizeMode="cover"
+        />
+      ) : (
+        <CameraView
+          ref={cameraRef}
+          style={styles.cameraView}
+          facing={facing}
+        />
+      )}
 
       {/* 2. Top Meal Period & Time Context Pill (cleanly positioned below top tabs) */}
       <View style={[styles.topPeriodBadge, { top: insets.top + 54 }]}>
@@ -296,7 +374,7 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
       {/* 3. Bottom Controls & Multi-Photo Tray */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.bottomOverlay}
+        style={[styles.bottomOverlay, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}
         pointerEvents="box-none"
       >
         {/* Floating Note / Context Capsule Pill */}
@@ -366,7 +444,14 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
               {photos.length < 4 && (
                 <TouchableOpacity
                   style={styles.addMorePhotoBtn}
-                  onPress={handleTakePhoto}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                    if (showFrozenTrayPreview) {
+                      setIsAddingAngle(true);
+                    } else {
+                      handleTakePhoto();
+                    }
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel="Take additional angle photo"
                 >
@@ -414,15 +499,26 @@ export default function CameraScanner({ onCapturePhoto, isProcessing = false }) 
 
           {/* Shutter Button */}
           <TouchableOpacity
-            style={styles.shutterBtn}
-            onPress={photos.length === 0 ? handleDirectSnapAndAnalyze : handleTakePhoto}
-            disabled={isProcessing}
+            style={[styles.shutterBtn, (isProcessing || isCapturing) && styles.shutterBtnBusy]}
+            onPress={
+              photos.length === 0
+                ? handleDirectSnapAndAnalyze
+                : showFrozenTrayPreview
+                ? handleAnalyzeAll
+                : handleTakePhoto
+            }
+            disabled={isProcessing || isCapturing}
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Capture photo and analyze meal"
             accessibilityHint="Takes a picture of your food plate for instant AI nutrient analysis"
+            accessibilityState={{ busy: isProcessing || isCapturing, disabled: isProcessing || isCapturing }}
           >
-            <View style={styles.shutterInner} />
+            <View style={styles.shutterInner}>
+              {isProcessing || isCapturing ? (
+                <ActivityIndicator size="small" color="#08170E" />
+              ) : null}
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -918,10 +1014,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  shutterBtnBusy: {
+    opacity: 0.7,
+    borderColor: 'rgba(255, 255, 255, 0.55)',
+  },
   shutterInner: {
     width: 46,
     height: 46,
     borderRadius: 23,
     backgroundColor: colors.sageBright,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

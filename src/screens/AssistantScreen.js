@@ -122,10 +122,27 @@ export default function AssistantScreen() {
     await sendUserMessage(promptText, userContext, () => scrollToBottom(false));
   };
 
+  const remainingKcal = Math.max(0, Math.round(goals.calories - dailyTotals.netCalories));
+
+  const handleClearChat = () => {
+    if (messages.length <= 1 && !isGenerating) {
+      clearChat();
+      return;
+    }
+    Alert.alert(
+      'Clear conversation?',
+      'This removes the current chat with Sage. Your food logs are not affected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear Chat', style: 'destructive', onPress: () => clearChat() },
+      ]
+    );
+  };
+
   const handleGenerateReview = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     scrollToBottom(true);
-    const reviewPrompt = `Please give me a structured 3-point daily review of my nutrition today:\n- Consumed: ${userContext.totals.calories} kcal (Target: ${userContext.goals.calories} kcal)\n- Protein: ${userContext.totals.protein}g / ${userContext.goals.protein}g\n- Carbs: ${userContext.totals.carbs}g / ${userContext.goals.carbs}g\n- Fat: ${userContext.totals.fat}g / ${userContext.goals.fat}g\n- Active Burn: ${userContext.totals.caloriesBurned} kcal\n\nProvide:\n1. 🌟 Achievements & Wins\n2. 🔍 Areas for Improvement\n3. 🎯 Focus Target for Tomorrow`;
+    const reviewPrompt = `Please give me a structured 3-point daily review of my nutrition for ${userContext.date}:\n- Consumed: ${userContext.totals.calories} kcal (Target: ${userContext.goals.calories} kcal)\n- Protein: ${userContext.totals.protein}g / ${userContext.goals.protein}g\n- Carbs: ${userContext.totals.carbs}g / ${userContext.goals.carbs}g\n- Fat: ${userContext.totals.fat}g / ${userContext.goals.fat}g\n- Active Burn: ${userContext.totals.caloriesBurned} kcal\n\nProvide:\n1. 🌟 Achievements & Wins\n2. 🔍 Areas for Improvement\n3. 🎯 Focus Target for Tomorrow`;
     await sendUserMessage(reviewPrompt, userContext, () => scrollToBottom(false));
   };
 
@@ -166,7 +183,7 @@ export default function AssistantScreen() {
 
           <TouchableOpacity
             style={styles.clearBtn}
-            onPress={clearChat}
+            onPress={handleClearChat}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityRole="button"
             accessibilityLabel="Clear chat conversation"
@@ -184,7 +201,7 @@ export default function AssistantScreen() {
           >
             <TouchableOpacity
               style={styles.actionChip}
-              onPress={() => handleQuickPrompt(`What should I eat with my remaining ${goals.calories - dailyTotals.calories} kcal?`)}
+              onPress={() => handleQuickPrompt(`What should I eat with my remaining ${remainingKcal} kcal?`)}
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Ask what to eat next"
