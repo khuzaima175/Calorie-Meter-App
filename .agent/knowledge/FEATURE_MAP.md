@@ -43,7 +43,7 @@
      - Live status badge (`GEMINI VISION AI`), title, and progress message.
      - **Cancel & Retake** button (`handleCancelProcessing`), allowing immediate cancellation and return to live camera.
 3. **AI Vision & Two-Pass Lenient Retry (`analyzeFoodPhoto`)**:
-   - Fast sub-second inference with `thinkingBudget: 0`.
+   - Fast sub-second inference with `thinkingLevel: 'MINIMAL'` and `INTEGER` schema fields.
    - `isGenuineNoFood(parsed)` guard inspects the response. If non-food is detected, it automatically executes a second, more lenient retry pass before giving up.
    - If the second pass also reports no food, throws tagged `error.code = 'NO_FOOD'`.
    - `LogMealScreen` catches `NO_FOOD` and displays an alert offering **Retake** or **Describe Instead** (switches to `'text'` tab).

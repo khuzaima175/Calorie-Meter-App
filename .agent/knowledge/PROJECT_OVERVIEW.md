@@ -96,7 +96,7 @@ flowchart TD
 3. **Service & Persistence Layer (`src/services/`)**:
    - `databaseService.js`: Unified async CRUD over native SQLite and web `localStorage`.
    - `imageService.js`: Cross-platform image persistence (`documentDirectory/meals/` on native, IndexedDB on web).
-   - `geminiService.js`: Gemini 3.5 client with fast inference (`thinkingBudget: 0`), two-pass lenient vision retry, rate limiter (60/15 RPM) with retry deduplication protection.
+   - `geminiService.js`: Gemini 3.5 client with fast inference (`thinkingLevel: 'MINIMAL'`), `INTEGER` schema fields, two-pass lenient vision retry, rate limiter (60/15 RPM) with retry deduplication protection.
    - `barcodeService.js` & `barcodeNutrition.js`: OpenFoodFacts v2 client with serving scaling and energy unit conversion.
    - `notificationService.js`: Android channel configuration, permissions, 4 daily triggers, and test notification.
    - `exerciseCalculations.js`: Pure calculations for walking METs, presets, and water volume.

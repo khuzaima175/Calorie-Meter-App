@@ -55,15 +55,15 @@ test('Photo analysis trusts a real estimate even if the model also set is_no_foo
   assert.equal(requests.length, 1);
 });
 
-test('Fast mode disables thinking and falls back cleanly when a model rejects it', async () => {
+test('Fast mode uses minimal thinking and falls back cleanly on generic 400 INVALID_ARGUMENT', async () => {
   const { gemini, requests } = loadGemini([
-    { status: 400, body: JSON.stringify({ error: { message: 'Thinking budget is not supported for this model', status: 'INVALID_ARGUMENT' } }) },
+    { status: 400, body: JSON.stringify({ error: { code: 400, message: 'Request contains an invalid argument.', status: 'INVALID_ARGUMENT' } }) },
     food,
     food,
   ]);
   const first = await gemini.analyzeFoodPhoto(photos, 'image/jpeg', {});
   assert.equal(first.name, 'Chicken Biryani');
-  assert.deepEqual(requests[0].generationConfig.thinkingConfig, { thinkingBudget: 0 });
+  assert.deepEqual(requests[0].generationConfig.thinkingConfig, { thinkingLevel: 'MINIMAL' });
   assert.equal(requests[1].generationConfig.thinkingConfig, undefined);
 
   // The rejection is remembered, so later calls never send thinkingConfig again.

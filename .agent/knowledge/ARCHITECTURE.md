@@ -159,9 +159,10 @@ stateDiagram-v2
   - `PRIMARY_MODEL = 'gemini-3.5-flash-lite'`
   - `FALLBACK_MODEL = 'gemini-flash-lite-latest'`
   - `CHAT_MODEL = 'gemini-3.5-flash-lite'`
-- **Fast Thinking Configuration**:
-  - Sub-second inference: Passes `generationConfig.thinkingConfig: { thinkingBudget: 0 }`.
-  - If a model rejects this config (`HTTP 400` with `'thinking'` in error), sets `thinkingConfigUnsupported = true` and immediately retries without thinkingConfig.
+- **Fast Thinking Configuration & Schema Safety**:
+  - Sub-second inference: Passes `generationConfig.thinkingConfig: { thinkingLevel: 'MINIMAL' }`.
+  - If a model rejects `thinkingConfig` (returning a generic `HTTP 400 INVALID_ARGUMENT`), sets `thinkingConfigUnsupported = true` and immediately retries without `thinkingConfig`.
+  - `FOOD_ANALYSIS_SCHEMA` and `NUTRITION_LABEL_SCHEMA` use `type: 'INTEGER'` for all numeric fields to prevent constrained-decoding floating-point runaway loops.
 - **Two-Pass Lenient Vision Policy**:
   - First pass sends meal photos with `FOOD_ANALYSIS_SCHEMA`.
   - `isGenuineNoFood(parsed)` verifies if the result is truly non-food (ignoring cases where the model sets `is_no_food: true` while still returning a valid food name and calories > 0).

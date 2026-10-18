@@ -324,10 +324,10 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
     }
   }
 
-  // Structured extraction does not benefit from reasoning tokens; skipping them cuts seconds of latency.
+  // Structured extraction does not benefit from deep reasoning; MINIMAL thinking cuts latency on Gemini 3.5.
   const useFastMode = Boolean(options.fast) && !thinkingConfigUnsupported;
   if (useFastMode) {
-    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    generationConfig.thinkingConfig = { thinkingLevel: 'MINIMAL' };
   }
 
   const body = {
@@ -371,8 +371,9 @@ async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODE
         throw new Error(friendlyMsg);
       }
 
-      // Model does not accept thinkingConfig (or budget 0): remember and retry once without it
-      if (useFastMode && response.status === 400 && /thinking/i.test(errorText)) {
+      // Google's REST API often returns a generic 400 INVALID_ARGUMENT ("Request contains an invalid argument.")
+      // when thinkingConfig is rejected; remember and retry once without fast mode.
+      if (useFastMode && response.status === 400) {
         console.warn(`Model ${model} rejected thinkingConfig; retrying without fast mode.`);
         thinkingConfigUnsupported = true;
         return await callGemini(contents, systemInstruction, model, { ...options, isRetry: true });
@@ -791,49 +792,47 @@ export const FOOD_ANALYSIS_SCHEMA = {
   type: 'OBJECT',
   properties: {
     name: { type: 'STRING' },
-    meal_type: { type: 'STRING' },
+    meal_type: { type: 'STRING', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
     portion: { type: 'STRING' },
-    calories: { type: 'NUMBER' },
-    protein: { type: 'NUMBER' },
-    carbs: { type: 'NUMBER' },
-    fat: { type: 'NUMBER' },
-    fiber: { type: 'NUMBER' },
-    sugar: { type: 'NUMBER' },
-    sodium: { type: 'NUMBER' },
-    confidence: { type: 'NUMBER' },
-    health_score: { type: 'NUMBER' },
+    calories: { type: 'INTEGER' },
+    protein: { type: 'INTEGER' },
+    carbs: { type: 'INTEGER' },
+    fat: { type: 'INTEGER' },
+    fiber: { type: 'INTEGER' },
+    sugar: { type: 'INTEGER' },
+    sodium: { type: 'INTEGER' },
+    health_score: { type: 'INTEGER' },
     dietary_tags: { type: 'ARRAY', items: { type: 'STRING' } },
     ingredients: { type: 'ARRAY', items: { type: 'STRING' } },
     health_tips: { type: 'STRING' },
     is_no_food: { type: 'BOOLEAN' },
     is_water: { type: 'BOOLEAN' },
-    water_ml: { type: 'NUMBER' },
+    water_ml: { type: 'INTEGER' },
   },
-  required: ['name', 'meal_type', 'portion', 'calories', 'protein', 'carbs', 'fat'],
+  required: ['name', 'meal_type', 'portion', 'calories', 'protein', 'carbs', 'fat', 'is_no_food', 'is_water'],
 };
 
 export const NUTRITION_LABEL_SCHEMA = {
   type: 'OBJECT',
   properties: {
     name: { type: 'STRING' },
-    meal_type: { type: 'STRING' },
+    meal_type: { type: 'STRING', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
     portion: { type: 'STRING' },
-    calories: { type: 'NUMBER' },
-    protein: { type: 'NUMBER' },
-    carbs: { type: 'NUMBER' },
-    fat: { type: 'NUMBER' },
-    fiber: { type: 'NUMBER' },
-    sugar: { type: 'NUMBER' },
-    sodium: { type: 'NUMBER' },
-    confidence: { type: 'NUMBER' },
-    health_score: { type: 'NUMBER' },
+    calories: { type: 'INTEGER' },
+    protein: { type: 'INTEGER' },
+    carbs: { type: 'INTEGER' },
+    fat: { type: 'INTEGER' },
+    fiber: { type: 'INTEGER' },
+    sugar: { type: 'INTEGER' },
+    sodium: { type: 'INTEGER' },
+    health_score: { type: 'INTEGER' },
     dietary_tags: { type: 'ARRAY', items: { type: 'STRING' } },
     health_tips: { type: 'STRING' },
     is_no_food: { type: 'BOOLEAN' },
     is_water: { type: 'BOOLEAN' },
-    water_ml: { type: 'NUMBER' },
+    water_ml: { type: 'INTEGER' },
   },
-  required: ['name', 'portion', 'calories', 'protein', 'carbs', 'fat'],
+  required: ['name', 'portion', 'calories', 'protein', 'carbs', 'fat', 'is_no_food'],
 };
 
 /**

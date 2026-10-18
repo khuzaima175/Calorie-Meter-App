@@ -43,7 +43,7 @@
 
 - **[`geminiService.js`](file:///g:/calorie%20meter/src/services/geminiService.js)**:
   - Models: `PRIMARY_MODEL = 'gemini-3.5-flash-lite'`, `FALLBACK_MODEL = 'gemini-flash-lite-latest'`, `CHAT_MODEL = 'gemini-3.5-flash-lite'`.
-  - Fast Inference: Sends `generationConfig.thinkingConfig: { thinkingBudget: 0 }`. Automatically falls back to standard config if model rejects (`thinkingConfigUnsupported = true`).
+  - Fast Inference: Sends `generationConfig.thinkingConfig: { thinkingLevel: 'MINIMAL' }` and uses `INTEGER` schema fields to prevent float runaway loops. Automatically falls back to standard config on any non-key 400 (`thinkingConfigUnsupported = true`).
   - Two-Pass Lenient Vision: `isGenuineNoFood(p)` check triggers a second, more lenient retry pass before raising tagged `NO_FOOD` error.
   - Rate Limiter: 60 RPM custom key, 15 RPM shared. Internal retries set `isRetry: true` to prevent double-counting request tokens.
   - Functions: `getApiKey()`, `cleanBase64()`, `parseAndFormatGeminiError()`, `testGeminiApiKey()`, `cleanJsonText()`, `analyzeFoodPhoto()`, `analyzeNutritionLabel()`, `parseMealDescription()`, `sendNutritionistChatMessage()`, `generateDailyReview()`, `generatePersonalizedMealPlan()`, `estimateExerciseFromText()`, `getCurrentMealPeriod()`.
