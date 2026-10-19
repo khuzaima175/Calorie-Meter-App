@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { format, parseISO } from 'date-fns';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useNutritionStore } from '../stores/useNutritionStore';
 import { useProfileStore } from '../stores/useProfileStore';
@@ -27,10 +27,15 @@ import MealSection from '../components/MealSection';
 import QuickAddModal from '../components/QuickAddModal';
 import WeeklyTrendsCard from '../components/WeeklyTrendsCard';
 import Card from '../components/Card';
+import EditorialCard from '../components/EditorialCard';
+import useReducedMotion from '../hooks/useReducedMotion';
 import NutritionErrorBanner from '../components/NutritionErrorBanner';
 import { colors, radius, typography } from '../theme/colors';
 
+let dashboardEntered = false;
+
 export default function DashboardScreen({ navigation }) {
+  const reducedMotion = useReducedMotion();
   const selectedDate = useNutritionStore((s) => s.selectedDate);
   const setSelectedDate = useNutritionStore((s) => s.setSelectedDate);
   const refreshData = useNutritionStore((s) => s.refreshData);
@@ -56,6 +61,8 @@ export default function DashboardScreen({ navigation }) {
   const slideAnims = useRef([...Array(5)].map(() => new Animated.Value(18))).current;
 
   useEffect(() => {
+    if (dashboardEntered || reducedMotion) { fadeAnims.forEach((a) => a.setValue(1)); slideAnims.forEach((a) => a.setValue(0)); return; }
+    dashboardEntered = true;
     const animations = fadeAnims.map((fade, i) =>
       Animated.parallel([
         Animated.timing(fade, {
@@ -74,7 +81,7 @@ export default function DashboardScreen({ navigation }) {
       ])
     );
     Animated.stagger(0, animations).start();
-  }, []);
+  }, [reducedMotion]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -263,6 +270,7 @@ export default function DashboardScreen({ navigation }) {
         </Animated.View>
 
         {/* Meal Categories */}
+        <EditorialCard image="meal" eyebrow="Make it a habit" title="Good food. A clearer picture." description="Snap your next meal and get on with your day. Review the estimate when you’re ready." action="Scan a meal" onPress={() => navigation.navigate('LogMeal')} />
         <Animated.View style={{ opacity: fadeAnims[3], transform: [{ translateY: slideAnims[3] }] }}>
         <View style={styles.mealsHeader}>
           <Text style={styles.sectionTitle}>{isViewingToday ? "Today's Meals" : 'Meals - ' + format(parseISO(selectedDate), 'EEE, MMM d')}</Text>

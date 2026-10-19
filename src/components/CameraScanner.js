@@ -1,6 +1,6 @@
 import { Alert } from '../services/alertService';
 // src/components/CameraScanner.js
-// Ultra-fast multi-photo food scanner with Pakistani meal context, time-of-day period detection, and custom notes
+// Raw photo capture with multi-angle input, local meal period, and portion notes.
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -19,8 +19,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import { Ionicons } from '@expo/vector-icons';
+
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, typography } from '../theme/colors';
 import { getCurrentMealPeriod } from '../services/geminiService';
@@ -47,6 +47,10 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
   const [isCapturing, setIsCapturing] = useState(false);
   const [isAddingAngle, setIsAddingAngle] = useState(false);
   const cameraRef = useRef(null);
+  const mounted = useRef(true);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const isCapturingRef = useRef(false);
 
   // Update meal period periodically
@@ -58,32 +62,12 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
     return () => clearInterval(interval);
   }, []);
 
-  // Helper to resize and compress photos on-device (shrinks 5MB down to ~85KB for fast upload & recognition)
-  const optimizeImageForAI = async (uri) => {
-    const t0 = Date.now();
-    try {
-      const manipResult = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 896 } }],
-        { compress: 0.62, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-      );
-      const resizeMs = Date.now() - t0;
-      const sizeKb = Math.round(((manipResult.base64?.length || 0) * 0.75) / 1024);
-      console.log(`[Perf] ✂️ Photo resized to 896px in ${resizeMs}ms (JPEG payload: ~${sizeKb} KB)`);
-      return {
-        uri: manipResult.uri,
-        base64: manipResult.base64,
-        mimeType: 'image/jpeg',
-      };
-    } catch (err) {
-      console.warn('Image optimization fallback:', err);
-      return null;
-    }
-  };
+  // Only describe the raw capture here. The shared runner resizes after the preview handoff.
+  const optimizeImageForAI = async (uri) => ({ uri, mimeType: 'image/jpeg' });
 
   // Direct single-photo snap & instant AI analysis (Default first shutter tap)
   const handleDirectSnapAndAnalyze = async () => {
-    if (!cameraRef.current || isProcessing || isCapturingRef.current) return;
+    if (!cameraRef.current || !cameraReady || isProcessing || isCapturingRef.current) return;
     isCapturingRef.current = true;
     setIsCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -93,8 +77,9 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.7,
-        skipProcessing: true,
+        skipProcessing: false,
       });
+      if (!mounted.current) return;
       const captureMs = Date.now() - t0;
       console.log(`[Perf] 📸 Hardware camera capture: ${captureMs}ms`);
 
@@ -108,7 +93,7 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
       handedOff = true;
 
       const optimized = await optimizeImageForAI(photo.uri);
-      if (!optimized?.base64) {
+      if (!optimized?.uri) {
         onCaptureAbort?.();
         Alert.alert('Optimization Error', 'Could not process photo for AI. Please try again.');
         return;
@@ -134,7 +119,7 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
 
   // Multi-angle photo capture (adds photo to tray, up to 4 photos)
   const handleTakePhoto = async () => {
-    if (!cameraRef.current || isProcessing || isCapturingRef.current || photos.length >= 4) return;
+    if (!cameraRef.current || !cameraReady || isProcessing || isCapturingRef.current || photos.length >= 4) return;
     isCapturingRef.current = true;
     setIsCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -143,14 +128,15 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.7,
-        skipProcessing: true,
+        skipProcessing: false,
       });
+      if (!mounted.current) return;
       const captureMs = Date.now() - t0;
       console.log(`[Perf] 📸 Hardware camera capture: ${captureMs}ms`);
 
       if (photo?.uri) {
         const optimized = await optimizeImageForAI(photo.uri);
-        if (optimized?.base64) {
+        if (optimized?.uri) {
           setPhotos((prev) => [...prev, optimized].slice(0, 4));
           setIsAddingAngle(false);
         } else {
@@ -178,13 +164,14 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
         quality: 0.8,
       });
 
+      if (!mounted.current) return;
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
         if (photos.length === 0) {
           onCaptureStart?.(asset.uri);
           handedOff = true;
           const optimized = await optimizeImageForAI(asset.uri);
-          if (optimized?.base64) {
+          if (optimized?.uri) {
             onCapturePhoto({
               uri: optimized.uri,
               base64: optimized.base64,
@@ -199,7 +186,7 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
           }
         } else {
           const optimized = await optimizeImageForAI(asset.uri);
-          if (optimized?.base64) {
+          if (optimized?.uri) {
             setPhotos((prev) => [...prev, optimized].slice(0, 4));
             setIsAddingAngle(false);
           } else {
@@ -232,13 +219,14 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
         quality: 0.8,
       });
 
+      if (!mounted.current) return;
       if (!result.canceled && result.assets?.length > 0) {
         const toAdd = result.assets.slice(0, remainingSlots);
         if (photos.length === 0 && toAdd.length === 1) {
           onCaptureStart?.(toAdd[0].uri);
           handedOff = true;
           const opt = await optimizeImageForAI(toAdd[0].uri);
-          if (opt?.base64) {
+          if (opt?.uri) {
             onCapturePhoto({
               uri: opt.uri,
               base64: opt.base64,
@@ -257,7 +245,7 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
         const newItems = [];
         for (const asset of toAdd) {
           const opt = await optimizeImageForAI(asset.uri);
-          if (opt?.base64) {
+          if (opt?.uri) {
             newItems.push(opt);
           }
         }
@@ -329,13 +317,14 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
     );
   }
 
-  if (!permission.granted) {
+  if (!permission.granted || cameraError) {
     return (
       <View style={styles.center}>
-        <Text style={styles.text}>Camera permission is required to scan meals</Text>
-        <TouchableOpacity accessibilityRole="button" style={styles.btn} onPress={requestPermission}>
-          <Text style={styles.btnText}>Grant Permission</Text>
+        <Text style={styles.text}>{cameraError || 'Camera permission is required to scan meals'}</Text>
+        <TouchableOpacity accessibilityRole="button" style={styles.btn} onPress={() => { setCameraError(null); requestPermission(); }}>
+          <Text style={styles.btnText}>Enable camera</Text>
         </TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose meal photo from gallery" style={styles.btn} onPress={handlePickFromGallery}><Text style={styles.btnText}>Choose from gallery</Text></TouchableOpacity>
       </View>
     );
   }
@@ -353,6 +342,8 @@ export default function CameraScanner({ onCapturePhoto, onCaptureStart, onCaptur
         />
       ) : (
         <CameraView
+          onCameraReady={() => { setCameraReady(true); setCameraError(null); }}
+          onMountError={() => { setCameraReady(false); setCameraError('Camera unavailable'); }}
           ref={cameraRef}
           style={styles.cameraView}
           facing={facing}
@@ -662,7 +653,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   cameraView: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },

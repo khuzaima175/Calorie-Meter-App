@@ -5,10 +5,12 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
-import { initDatabase, getTodayString } from './services/databaseService';
+import { initDatabase, getTodayString, cleanupUnreferencedImages } from './services/databaseService';
 import { useProfileStore } from './stores/useProfileStore';
 import { useNutritionStore } from './stores/useNutritionStore';
 import { ensureRemindersOnFirstLaunch } from './services/notificationService';
+import { scanManager } from './services/scanService';
+import { startConnectivityMonitoring } from './services/connectivityService';
 import TabNavigator from './navigation/TabNavigator';
 import LoadingShimmer from './components/LoadingShimmer';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -45,17 +47,21 @@ function AppBootstrapper() {
 
   useEffect(() => {
     let mounted = true;
+    let stopConnectivity;
     setBootError(null);
     async function bootstrap() {
       try {
         // 1. Initialize SQLite Database & run schema migrations
         await initDatabase();
+        void cleanupUnreferencedImages([]).catch(() => {});
 
         // 2. Hydrate user profile and goals into Zustand state
         await useProfileStore.getState().loadProfile();
 
         // 3. Hydrate today's nutrition logs into Zustand state
         await useNutritionStore.getState().refreshData(getTodayString());
+        await scanManager.initialize();
+        if (mounted) stopConnectivity = startConnectivityMonitoring((connected) => scanManager.setPaused(!connected));
         const loadError = useNutritionStore.getState().error;
         if (loadError) throw new Error(loadError);
 
@@ -69,7 +75,7 @@ function AppBootstrapper() {
     }
 
     bootstrap();
-    return () => { mounted = false; };
+    return () => { mounted = false; stopConnectivity?.(); };
   }, [attempt]);
 
   if (bootError) {

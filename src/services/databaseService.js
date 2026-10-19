@@ -2,6 +2,7 @@ import { numberInRange, validateDate, validateMeal, validateExercise, validatePr
 import { Platform } from 'react-native';
 import { format, addDays, subDays } from 'date-fns';
 import { persistImageAsync, deletePersistedImageAsync } from './imageService';
+import { notifyDataReplacement } from './dataLifecycle';
 
 const IS_WEB = Platform.OS === 'web';
 let SQLite = null;
@@ -49,6 +50,9 @@ let webStore = {
   water_intake: [],
   goals: { ...DEFAULT_GOALS },
   profile: { ...DEFAULT_PROFILE },
+  settings: {},
+  scan_jobs: [],
+  scan_receipts: [],
 };
 
 function saveWebStore() {
@@ -78,7 +82,7 @@ function loadWebStore() {
       if (data) {
         const parsed = JSON.parse(data);
         validateBackup({ ...parsed, schema_version: 2 });
-        webStore = { ...parsed, profile: validateProfile({ ...DEFAULT_PROFILE, ...parsed.profile }), goals: validateGoals({ ...DEFAULT_GOALS, ...parsed.goals }) };
+        webStore = { settings: {}, scan_jobs: [], scan_receipts: [], ...parsed, profile: validateProfile({ ...DEFAULT_PROFILE, ...parsed.profile }), goals: validateGoals({ ...DEFAULT_GOALS, ...parsed.goals }) };
         committedWebStore = JSON.stringify(webStore);
         return true;
       }
@@ -206,6 +210,19 @@ async function migrateDatabase(db) {
     }
     await db.execAsync('PRAGMA user_version = 2');
   }
+  if (currentVersion < 3) {
+    await db.withExclusiveTransactionAsync(async (tx) => {
+      const columns = await tx.getAllAsync('PRAGMA table_info(meals)');
+      if (!columns.some((column) => column.name === 'metadata')) await tx.execAsync("ALTER TABLE meals ADD COLUMN metadata TEXT DEFAULT '{}'");
+      if (!columns.some((column) => column.name === 'thumbnail_uri')) await tx.execAsync('ALTER TABLE meals ADD COLUMN thumbnail_uri TEXT');
+      await tx.execAsync(`
+        CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS scan_jobs (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS scan_receipts (id TEXT PRIMARY KEY);
+        PRAGMA user_version = 3;
+      `);
+    });
+  }
 }
 
 /**
@@ -220,13 +237,13 @@ export async function initDatabase() {
     try {
       if (IS_WEB) {
         const hasSavedData = loadWebStore();
-        if (!hasSavedData) await seedDemoDataIfEmpty();
+        if (!hasSavedData) saveWebStore();
       } else {
         if (!SQLite) throw new Error('SQLite is unavailable on this device.');
         dbInstance = await SQLite.openDatabaseAsync('caloriesnap.db');
         const version = await dbInstance.getFirstAsync('PRAGMA user_version');
         await migrateDatabase(dbInstance);
-        if (!version?.user_version) await seedDemoDataIfEmpty();
+        // New diaries start empty. Demo records remain an explicit Settings action.
       }
       initialized = true;
       return dbInstance;
@@ -249,6 +266,116 @@ async function getDB() {
   return dbInstance;
 }
 
+const parseMetadata = (value) => {
+  try { return typeof value === 'string' ? JSON.parse(value) : value || {}; } catch { return {}; }
+};
+export function mealMetadata(meal) {
+  const previous = parseMetadata(meal.metadata);
+  const strings = (value) => Array.isArray(value) ? value.filter((s) => typeof s === 'string').slice(0, 40) : [];
+  return { ...previous,
+    image_uris: strings(meal.image_uris || previous.image_uris || (meal.image_uri ? [meal.image_uri] : [])),
+    ingredients: strings(meal.ingredients || previous.ingredients),
+    dietary_tags: strings(meal.dietary_tags || previous.dietary_tags),
+    health_tips: typeof (meal.health_tips ?? previous.health_tips) === 'string' ? (meal.health_tips ?? previous.health_tips).slice(0, 4000) : '',
+    health_score: Number(meal.health_score ?? previous.health_score) || 0,
+  };
+}
+const decodeMeal = (meal) => ({ ...meal, ...parseMetadata(meal.metadata) });
+
+export async function getSetting(key, fallback = null) {
+  await initDatabase();
+  if (IS_WEB) return webStore.settings?.[key] ?? fallback;
+  const row = await dbInstance.getFirstAsync('SELECT value FROM app_settings WHERE key=?', [key]);
+  try { return row ? JSON.parse(row.value) : fallback; } catch { return fallback; }
+}
+export async function setSetting(key, value) {
+  await initDatabase();
+  if (typeof key !== 'string' || !/^[a-z_]{1,64}$/.test(key)) throw new Error('Invalid setting key.');
+  const encoded = JSON.stringify(value);
+  if (!encoded || encoded.length > 16384) throw new Error('Invalid setting value.');
+  if (IS_WEB) { webStore.settings = { ...webStore.settings, [key]: value }; saveWebStore(); }
+  else await dbInstance.runAsync('INSERT OR REPLACE INTO app_settings (key,value) VALUES (?,?)', [key, encoded]);
+}
+
+export async function listScanJobs() {
+  await initDatabase();
+  if (IS_WEB) return JSON.parse(JSON.stringify(webStore.scan_jobs || []));
+  return (await dbInstance.getAllAsync('SELECT payload FROM scan_jobs ORDER BY rowid')).map((r) => JSON.parse(r.payload));
+}
+export async function putScanJob(job) {
+  await initDatabase();
+  validateDate(job.date);
+  if (typeof job.id !== 'string' || job.id.length > 128 || !['photo','label','text','barcode'].includes(job.kind) ||
+    !['queued','analyzing','ready','failed'].includes(job.status) || !Array.isArray(job.photos) || job.photos.length > 4) throw new Error('Invalid scan draft.');
+  const photos = job.photos.map((p) => {
+    if (typeof p.uri !== 'string' || /^(data|blob):/.test(p.uri)) throw new Error('Save the photo before queuing this scan.');
+    return { uri: p.uri, mimeType: p.mimeType || 'image/jpeg', prepared: Boolean(p.prepared) };
+  });
+  const saved = { id: job.id, kind: job.kind, date: job.date, createdAt: job.createdAt,
+    status: job.status, stage: job.stage, photos, thumbnailUri: job.thumbnailUri || null,
+    text: String(job.text || '').slice(0, 6000), context: { userNote: String(job.context?.userNote || '').slice(0, 4000), mealPeriod: job.context?.mealPeriod },
+    result: job.result || null, draft: job.draft || null, error: job.error || null };
+  if (IS_WEB) { webStore.scan_jobs = [...(webStore.scan_jobs || []).filter((j) => j.id !== job.id), saved]; saveWebStore(); }
+  else await dbInstance.runAsync('INSERT OR REPLACE INTO scan_jobs (id,payload) VALUES (?,?)', [job.id, JSON.stringify(saved)]);
+}
+export async function deleteScanJob(id) {
+  await initDatabase();
+  if (IS_WEB) { webStore.scan_jobs = (webStore.scan_jobs || []).filter((j) => j.id !== id); saveWebStore(); }
+  else await dbInstance.runAsync('DELETE FROM scan_jobs WHERE id=?', [id]);
+}
+
+const referencedImages = (record) => [record.image_uri, record.thumbnail_uri, ...mealMetadata(record).image_uris].filter(Boolean);
+export async function cleanupUnreferencedImages(uris) {
+  await initDatabase();
+  const deferred = await getSetting('image_cleanup_queue', []);
+  const candidates = [...new Set([...(Array.isArray(deferred) ? deferred : []), ...(uris || [])])].filter(Boolean);
+  if (!candidates.length) return;
+  // Read both owner sets in one snapshot: saving a scan transfers its media to a meal.
+  let meals, jobs;
+  if (IS_WEB) { meals = webStore.meals; jobs = webStore.scan_jobs || []; }
+  else {
+    const owners = await dbInstance.getAllAsync('SELECT image_uri,thumbnail_uri,metadata,NULL AS payload FROM meals UNION ALL SELECT NULL,NULL,NULL,payload FROM scan_jobs');
+    meals = owners.filter((row) => row.payload === null);
+    jobs = owners.filter((row) => row.payload !== null).map((row) => JSON.parse(row.payload));
+  }
+  const references = new Set([...meals.flatMap(referencedImages), ...jobs.flatMap((j) => [...j.photos.map((p) => p.uri), j.thumbnailUri].filter(Boolean))]);
+  const failed = [];
+  await Promise.all(candidates.filter((uri) => !references.has(uri)).map(async (uri) => {
+    try { await deletePersistedImageAsync(uri); } catch { failed.push(uri); }
+  }));
+  if (deferred.length || failed.length) await setSetting('image_cleanup_queue', failed.slice(-32)).catch(() => {});
+}
+
+export async function completeScanJob(job, edited) {
+  await initDatabase();
+  const date = validateDate(job.date), timestamp = job.createdAt;
+  const food = edited.is_water ? null : validateMeal({ ...job.result, ...edited, date });
+  const water = edited.is_water ? numberInRange(edited.water_ml, 'Water volume', 1, 10000) : null;
+  const image_uri = job.photos[0]?.uri || edited.image_uri || null;
+  const metadata = food ? mealMetadata({ ...food, image_uri, image_uris: job.photos.map((p) => p.uri) }) : null;
+  if (IS_WEB) {
+    if ((webStore.scan_receipts || []).includes(job.id)) return;
+    if (!(webStore.scan_jobs || []).some((j) => j.id === job.id && j.status === 'ready')) throw new Error('This scan is no longer available.');
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    if (food) webStore.meals.push({ ...food, id, date, timestamp, image_uri, metadata, thumbnail_uri: job.thumbnailUri || null });
+    else webStore.water_intake.push({ id, date, timestamp, amount_ml: water });
+    webStore.scan_receipts = [...(webStore.scan_receipts || []), job.id];
+    webStore.scan_jobs = webStore.scan_jobs.filter((j) => j.id !== job.id);
+    saveWebStore();
+    return;
+  }
+  await dbInstance.withExclusiveTransactionAsync(async (tx) => {
+    if (await tx.getFirstAsync('SELECT id FROM scan_receipts WHERE id=?', [job.id])) return;
+    const stored = await tx.getFirstAsync('SELECT payload FROM scan_jobs WHERE id=?', [job.id]);
+    if (!stored || JSON.parse(stored.payload).status !== 'ready') throw new Error('This scan is no longer available.');
+    if (food) await tx.runAsync('INSERT INTO meals (date,timestamp,meal_type,name,calories,protein,carbs,fat,fiber,sugar,sodium,portion,image_uri,metadata,thumbnail_uri) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [date,timestamp,food.meal_type,food.name,food.calories,food.protein,food.carbs,food.fat,food.fiber,food.sugar,food.sodium,food.portion || '1 serving',image_uri,JSON.stringify(metadata),job.thumbnailUri || null]);
+    else await tx.runAsync('INSERT INTO water_intake (date,timestamp,amount_ml) VALUES (?,?,?)', [date,timestamp,water]);
+    await tx.runAsync('INSERT INTO scan_receipts (id) VALUES (?)', [job.id]);
+    await tx.runAsync('DELETE FROM scan_jobs WHERE id=?', [job.id]);
+  });
+}
+
 // ----------------------------------------------------
 // MEALS CRUD
 // ----------------------------------------------------
@@ -256,13 +383,13 @@ async function getDB() {
 export async function getMealsByDate(date) {
   await initDatabase();
   if (IS_WEB || !dbInstance) {
-    return webStore.meals.filter((m) => m.date === date).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return webStore.meals.filter((m) => m.date === date).sort((a, b) => a.timestamp.localeCompare(b.timestamp)).map(decodeMeal);
   }
   const db = await getDB();
-  return await db.getAllAsync(
+  return (await db.getAllAsync(
     'SELECT * FROM meals WHERE date = ? ORDER BY timestamp ASC',
     [date]
-  );
+  )).map(decodeMeal);
 }
 
 export async function insertMeal(meal) {
@@ -281,7 +408,8 @@ export async function insertMeal(meal) {
   const sodium = Number(meal.sodium) || 0;
   const portion = meal.portion || '1 serving';
   const image_uri = await persistImageAsync(meal.image_uri || null);
-
+  const metadata = mealMetadata({ ...meal, image_uri });
+  try {
   if (IS_WEB || !dbInstance) {
     const newId = Date.now() + Math.floor(Math.random() * 1000);
     const newMeal = {
@@ -299,6 +427,8 @@ export async function insertMeal(meal) {
       sodium,
       portion,
       image_uri,
+      metadata,
+      thumbnail_uri: meal.thumbnail_uri || null,
     };
     webStore.meals.push(newMeal);
     saveWebStore();
@@ -307,32 +437,44 @@ export async function insertMeal(meal) {
 
   const db = await getDB();
   const result = await db.runAsync(
-    `INSERT INTO meals (date, timestamp, meal_type, name, calories, protein, carbs, fat, fiber, sugar, sodium, portion, image_uri)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [date, timestamp, meal_type, name, calories, protein, carbs, fat, fiber, sugar, sodium, portion, image_uri]
+    `INSERT INTO meals (date, timestamp, meal_type, name, calories, protein, carbs, fat, fiber, sugar, sodium, portion, image_uri, metadata, thumbnail_uri)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [date, timestamp, meal_type, name, calories, protein, carbs, fat, fiber, sugar, sodium, portion, image_uri, JSON.stringify(metadata), meal.thumbnail_uri || null]
   );
   return result.lastInsertRowId;
+  } catch (error) {
+    await cleanupUnreferencedImages([image_uri]).catch(() => {});
+    throw error;
+  }
 }
 
 export async function updateMeal(id, meal) {
   await initDatabase();
   const existing = IS_WEB ? webStore.meals.find((m) => m.id === id) : await dbInstance.getFirstAsync('SELECT * FROM meals WHERE id = ?', [id]);
   if (!existing) throw new Error('This meal no longer exists.');
+  const imageChanged = Object.hasOwn(meal, 'image_uri') && meal.image_uri !== existing.image_uri;
   meal = validateMeal({ ...existing, ...meal });
   meal.image_uri = await persistImageAsync(meal.image_uri || null);
+  if (imageChanged) {
+    meal.image_uris = [meal.image_uri, ...mealMetadata(existing).image_uris.filter((uri) => uri !== existing.image_uri)].filter(Boolean);
+    meal.thumbnail_uri = null;
+  }
+  meal.metadata = mealMetadata(meal);
+  try {
   if (IS_WEB || !dbInstance) {
     const idx = webStore.meals.findIndex((m) => m.id === id);
     if (idx !== -1) {
       webStore.meals[idx] = { ...webStore.meals[idx], ...meal };
       saveWebStore();
     }
+    await cleanupUnreferencedImages(referencedImages(existing));
     return;
   }
 
   const db = await getDB();
-  return await db.runAsync(
+  const result = await db.runAsync(
     `UPDATE meals 
-     SET meal_type = ?, name = ?, calories = ?, protein = ?, carbs = ?, fat = ?, fiber = ?, sugar = ?, sodium = ?, portion = ?, image_uri = ?
+     SET meal_type = ?, name = ?, calories = ?, protein = ?, carbs = ?, fat = ?, fiber = ?, sugar = ?, sodium = ?, portion = ?, image_uri = ?, metadata = ?, thumbnail_uri = ?
      WHERE id = ?`,
     [
       meal.meal_type,
@@ -346,9 +488,17 @@ export async function updateMeal(id, meal) {
       Number(meal.sodium) || 0,
       meal.portion || '1 serving',
       meal.image_uri || null,
+      JSON.stringify(meal.metadata),
+      meal.thumbnail_uri || null,
       id,
     ]
   );
+  await cleanupUnreferencedImages(referencedImages(existing));
+  return result;
+  } catch (error) {
+    await cleanupUnreferencedImages([meal.image_uri]).catch(() => {});
+    throw error;
+  }
 }
 
 export async function deleteMealById(id) {
@@ -357,16 +507,13 @@ export async function deleteMealById(id) {
     const mealToDelete = webStore.meals.find((m) => m.id === id);
     webStore.meals = webStore.meals.filter((m) => m.id !== id);
     saveWebStore();
-    if (mealToDelete?.image_uri && !webStore.meals.some((m) => m.image_uri === mealToDelete.image_uri)) await deletePersistedImageAsync(mealToDelete.image_uri);
+    if (mealToDelete) await cleanupUnreferencedImages(referencedImages(mealToDelete));
     return;
   }
   const db = await getDB();
-  const mealToDelete = await db.getFirstAsync('SELECT image_uri FROM meals WHERE id = ?', [id]);
+  const mealToDelete = await db.getFirstAsync('SELECT image_uri,thumbnail_uri,metadata FROM meals WHERE id = ?', [id]);
   const result = await db.runAsync('DELETE FROM meals WHERE id = ?', [id]);
-  if (mealToDelete?.image_uri) {
-    const reference = await db.getFirstAsync('SELECT id FROM meals WHERE image_uri = ? LIMIT 1', [mealToDelete.image_uri]);
-    if (!reference) await deletePersistedImageAsync(mealToDelete.image_uri);
-  }
+  if (mealToDelete) await cleanupUnreferencedImages(referencedImages(mealToDelete));
   return result;
 }
 
@@ -697,25 +844,40 @@ export async function resetDatabaseToDemo() {
   await seedDemoDataIfEmpty();
 }
 
+let replacementPending = false;
+async function replaceData(action) {
+  if (replacementPending) throw new Error('A data update is already in progress.');
+  replacementPending = true;
+  try { await notifyDataReplacement('before'); return await action(); }
+  finally { replacementPending = false; await notifyDataReplacement('after'); }
+}
+async function allStoredImages() {
+  const meals = IS_WEB ? webStore.meals : await dbInstance.getAllAsync('SELECT image_uri,thumbnail_uri,metadata FROM meals');
+  const jobs = await listScanJobs();
+  return [...meals.flatMap(referencedImages), ...jobs.flatMap((j) => [...j.photos.map((p) => p.uri), j.thumbnailUri].filter(Boolean))];
+}
+
 /**
  * Factory Reset: Completely wipes all meals, exercises, water records, and custom profiles.
  * Restores virgin state without loading demo data.
  */
 export async function factoryResetAllData() {
   await initDatabase();
-  const images = IS_WEB ? webStore.meals : await dbInstance.getAllAsync('SELECT image_uri FROM meals');
+  return replaceData(async () => {
+  const images = await allStoredImages();
   if (IS_WEB) {
-    webStore = { meals: [], exercises: [], water_intake: [], goals: { ...DEFAULT_GOALS }, profile: { ...DEFAULT_PROFILE } };
+    webStore = { meals: [], exercises: [], water_intake: [], settings: {}, scan_jobs: [], scan_receipts: [], goals: { ...DEFAULT_GOALS }, profile: { ...DEFAULT_PROFILE } };
     saveWebStore();
   } else {
     await dbInstance.withExclusiveTransactionAsync(async (tx) => {
-      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake; DELETE FROM goals; DELETE FROM profile;');
+      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake; DELETE FROM goals; DELETE FROM profile; DELETE FROM scan_jobs; DELETE FROM scan_receipts; DELETE FROM app_settings;');
       const p = DEFAULT_PROFILE; const g = DEFAULT_GOALS;
       await tx.runAsync('INSERT INTO profile (id,name,gender,age,weight_kg,height_cm,activity_level,goal_type,custom_api_key) VALUES (1,?,?,?,?,?,?,?,?)', [p.name,p.gender,p.age,p.weight_kg,p.height_cm,p.activity_level,p.goal_type,p.custom_api_key]);
       await tx.runAsync('INSERT INTO goals (id,calories,protein,carbs,fat,water_ml,exercise_minutes) VALUES (1,?,?,?,?,?,?)', [g.calories,g.protein,g.carbs,g.fat,g.water_ml,g.exercise_minutes]);
     });
   }
-  await Promise.all(images.map((meal) => deletePersistedImageAsync(meal.image_uri)));
+  await cleanupUnreferencedImages(images);
+  });
 }
 
 /**
@@ -723,16 +885,19 @@ export async function factoryResetAllData() {
  */
 export async function clearAllLogs() {
   await initDatabase();
-  const images = IS_WEB ? webStore.meals : await dbInstance.getAllAsync('SELECT image_uri FROM meals');
+  return replaceData(async () => {
+  const images = await allStoredImages();
   if (IS_WEB) {
     webStore.meals = []; webStore.exercises = []; webStore.water_intake = [];
+    webStore.scan_jobs = []; webStore.scan_receipts = [];
     saveWebStore();
   } else {
     await dbInstance.withExclusiveTransactionAsync(async (tx) => {
-      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake;');
+      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake; DELETE FROM scan_jobs; DELETE FROM scan_receipts;');
     });
   }
-  await Promise.all(images.map((meal) => deletePersistedImageAsync(meal.image_uri)));
+  await cleanupUnreferencedImages(images);
+  });
 }
 
 /**
@@ -746,7 +911,7 @@ export async function exportAllDataJSON() {
         schema_version: 2,
         app: 'CalorieSnap Pro',
         exportedAt: new Date().toISOString(),
-        profile: webStore.profile,
+        profile: publicProfile(webStore.profile),
         goals: webStore.goals,
         meals: webStore.meals,
         exercises: webStore.exercises,
@@ -770,7 +935,7 @@ export async function exportAllDataJSON() {
       schema_version: 2,
       app: 'CalorieSnap Pro',
       exportedAt: new Date().toISOString(),
-      profile,
+      profile: publicProfile(profile),
       goals,
       meals,
       exercises,
@@ -782,6 +947,11 @@ export async function exportAllDataJSON() {
   );
 }
 
+function publicProfile(profile) {
+  const { custom_api_key, ...safe } = profile || {};
+  return safe;
+}
+
 /**
  * Imports database records from a structured JSON backup with schema-version normalization
  */
@@ -791,27 +961,31 @@ export async function importAllDataJSON(jsonString) {
   try { parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString; }
   catch { throw new Error('Invalid JSON format. Please provide a valid backup file.'); }
   validateBackup(parsed);
-  const profile = validateProfile({ ...DEFAULT_PROFILE, ...parsed.profile });
+  const profile = validateProfile({ ...DEFAULT_PROFILE, ...publicProfile(parsed.profile), custom_api_key: (await getProfile()).custom_api_key || '' });
   const goals = validateGoals({ ...DEFAULT_GOALS, ...parsed.goals });
   const normalize = (records, validator) => records.map((record, index) => validator({ ...record, id: index + 1, timestamp: record.timestamp || new Date().toISOString() }));
   const meals = normalize(parsed.meals, (m) => validateMeal({ ...m, meal_type: m.meal_type || 'snack', image_uri: m.image_uri || null, portion: m.portion || '1 serving' }));
   const exercises = normalize(parsed.exercises, validateExercise);
   const water_intake = normalize(parsed.water_intake, (w) => w);
+  return replaceData(async () => {
+  const oldImages = await allStoredImages();
   if (IS_WEB) {
-    webStore = { profile, goals, meals, exercises, water_intake };
+    webStore = { ...webStore, profile, goals, meals, exercises, water_intake, scan_jobs: [], scan_receipts: [] };
     saveWebStore();
   } else {
     // All validation happens before deletion; a failed write rolls back everything.
     await dbInstance.withExclusiveTransactionAsync(async (tx) => {
-      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake;');
+      await tx.execAsync('DELETE FROM meals; DELETE FROM exercises; DELETE FROM water_intake; DELETE FROM scan_jobs; DELETE FROM scan_receipts;');
       await tx.runAsync('UPDATE profile SET name=?, gender=?, age=?, weight_kg=?, height_cm=?, activity_level=?, goal_type=?, custom_api_key=? WHERE id=1', [profile.name, profile.gender, profile.age, profile.weight_kg, profile.height_cm, profile.activity_level, profile.goal_type, profile.custom_api_key || '']);
       await tx.runAsync('UPDATE goals SET calories=?, protein=?, carbs=?, fat=?, water_ml=?, exercise_minutes=? WHERE id=1', [goals.calories, goals.protein, goals.carbs, goals.fat, goals.water_ml, goals.exercise_minutes]);
-      for (const m of meals) await tx.runAsync('INSERT INTO meals (date,timestamp,meal_type,name,calories,protein,carbs,fat,fiber,sugar,sodium,portion,image_uri) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [m.date,m.timestamp,m.meal_type,m.name,m.calories,m.protein,m.carbs,m.fat,m.fiber,m.sugar,m.sodium,m.portion,m.image_uri]);
+      for (const m of meals) await tx.runAsync('INSERT INTO meals (date,timestamp,meal_type,name,calories,protein,carbs,fat,fiber,sugar,sodium,portion,image_uri,metadata,thumbnail_uri) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [m.date,m.timestamp,m.meal_type,m.name,m.calories,m.protein,m.carbs,m.fat,m.fiber,m.sugar,m.sodium,m.portion,m.image_uri,JSON.stringify(mealMetadata(m)),m.thumbnail_uri || null]);
       for (const e of exercises) await tx.runAsync('INSERT INTO exercises (date,timestamp,exercise_name,duration_minutes,calories_burned,intensity,category) VALUES (?,?,?,?,?,?,?)', [e.date,e.timestamp,e.exercise_name,e.duration_minutes,e.calories_burned,e.intensity || 'moderate',e.category || 'cardio']);
       for (const w of water_intake) await tx.runAsync('INSERT INTO water_intake (date,timestamp,amount_ml) VALUES (?,?,?)', [w.date,w.timestamp,w.amount_ml]);
     });
   }
+  await cleanupUnreferencedImages(oldImages);
   return { schemaVersion: parsed.schema_version || parsed.version || 1, mealCount: meals.length, exerciseCount: exercises.length, waterCount: water_intake.length };
+  });
 }
 
 /**
@@ -864,22 +1038,29 @@ export async function get7DaySummary(endDate = getTodayString()) {
     dates.push(`${yyyy}-${mm}-${dd}`);
   }
 
-  const summary = [];
-  for (const d of dates) {
-    const daily = await getDailySummary(d);
-    summary.push({
-      date: d,
-      calories: daily.totals.calories,
-      caloriesBurned: daily.totals.caloriesBurned,
-      netCalories: daily.totals.netCalories,
-      protein: daily.totals.protein,
-      carbs: daily.totals.carbs,
-      fat: daily.totals.fat,
-      waterMl: daily.totals.waterMl,
-    });
-  }
-
-  return summary;
+  await initDatabase();
+  const start = dates[0], end = dates[6];
+  const sum = (records, fields) => {
+    const grouped = new Map();
+    for (const record of records) {
+      if (record.date < start || record.date > end) continue;
+      const row = grouped.get(record.date) || { date: record.date };
+      for (const field of fields) row[field] = (row[field] || 0) + (Number(record[field]) || 0);
+      grouped.set(record.date, row);
+    }
+    return [...grouped.values()];
+  };
+  const [meals, workouts, water] = IS_WEB ? [sum(webStore.meals, ['calories','protein','carbs','fat']), sum(webStore.exercises, ['calories_burned']), sum(webStore.water_intake, ['amount_ml'])] : await Promise.all([
+    dbInstance.getAllAsync('SELECT date,SUM(calories) AS calories,SUM(protein) AS protein,SUM(carbs) AS carbs,SUM(fat) AS fat FROM meals WHERE date BETWEEN ? AND ? GROUP BY date', [start,end]),
+    dbInstance.getAllAsync('SELECT date,SUM(calories_burned) AS calories_burned FROM exercises WHERE date BETWEEN ? AND ? GROUP BY date', [start,end]),
+    dbInstance.getAllAsync('SELECT date,SUM(amount_ml) AS amount_ml FROM water_intake WHERE date BETWEEN ? AND ? GROUP BY date', [start,end]),
+  ]);
+  const byDate = (rows) => new Map(rows.map((r) => [r.date, r]));
+  const m = byDate(meals), e = byDate(workouts), w = byDate(water);
+  return dates.map((date) => {
+    const food = m.get(date) || {}, calories = Math.round(food.calories || 0), caloriesBurned = Math.round(e.get(date)?.calories_burned || 0);
+    return { date, calories, caloriesBurned, netCalories: calories - caloriesBurned, protein: Math.round(food.protein || 0), carbs: Math.round(food.carbs || 0), fat: Math.round(food.fat || 0), waterMl: Math.round(w.get(date)?.amount_ml || 0) };
+  });
 }
 
 /**

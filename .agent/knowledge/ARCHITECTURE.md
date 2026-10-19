@@ -1,5 +1,7 @@
 # Architecture — CalorieSnap Pro
 
+> Historical baseline below. See [PROJECT_SKILL](PROJECT_SKILL.md), [current architecture](../../ARCHITECTURE.md), and [verification](../../VERIFICATION_2026-10-19.md) for the 19 October screen-independent scan runner, migration 3, cancellation/attempt budgets, ownership cleanup, reminder persistence, and current checks. Old scan lifecycle and global thinking fallback descriptions are superseded.
+
 > **Last Reviewed:** 2026-10-17 | **Git Revision:** `2f87a3e` (`main`) | **Test Suite:** 54/54 Passing (`npm test`)
 
 ---

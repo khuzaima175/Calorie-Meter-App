@@ -20,7 +20,7 @@ test('Browser initialization can retry after a synchronous storage read failure'
   await assert.rejects(db.initDatabase(), /could not be read/);
   storage.clear();
   await db.initDatabase();
-  assert.ok((await db.getMealsByDate(db.getTodayString())).length > 0);
+  assert.equal((await db.getMealsByDate(db.getTodayString())).length, 0);
 });
 
 test('Browser startup rejects invalid saved profile/goals without overwriting data', async () => {
@@ -53,6 +53,7 @@ test('Clearing and factory reset remain empty after restarting', async () => {
 
 test('Invalid backups and unsupported versions leave existing records intact', async () => {
   const db = webLoader(); await db.initDatabase();
+  await db.seedDemoDataIfEmpty();
   const before = JSON.parse(await db.exportAllDataJSON());
   for (const backup of [{}, [], { ...before, schema_version: 3 }, { ...before, meals: [{ ...meal, date: '2026-02-30' }] }, { ...before, water_intake: [{ date: '2026-10-01', amount_ml: -5 }] }, { ...before, meals: [{ ...before.meals[0] }, { ...before.meals[0] }] }]) {
     await assert.rejects(db.importAllDataJSON(backup));
@@ -91,6 +92,7 @@ test('Meal edits preserve unedited nutrients and reject invalid numbers', async 
 
 test('Backup round trip preserves hydration timestamps and replaces all logs', async () => {
   const db = webLoader(); await db.initDatabase();
+  await db.seedDemoDataIfEmpty();
   const backup = JSON.parse(await db.exportAllDataJSON());
   backup.water_intake[0].timestamp = '2026-09-28T06:25:00.000Z';
   await db.importAllDataJSON(backup);
@@ -117,6 +119,7 @@ test('Native initialization is shared and SQLite import is atomic', async () => 
     [imagePath]: { persistImageAsync: async (uri) => uri, deletePersistedImageAsync: async () => {} },
   })('src/services/databaseService.js');
   await Promise.all([db.initDatabase(), db.initDatabase()]); assert.equal(opens, 1);
+  await db.seedDemoDataIfEmpty();
   const before = JSON.parse(await db.exportAllDataJSON());
   failWrites = true;
   await assert.rejects(db.importAllDataJSON(before), /disk full/);

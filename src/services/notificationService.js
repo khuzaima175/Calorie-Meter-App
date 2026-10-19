@@ -1,11 +1,17 @@
 // src/services/notificationService.js
 // Local notification manager for daily meal, hydration, and evening review reminders
 
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
+import { getSetting, setSetting } from './databaseService';
 const Notifications = Platform.OS === 'web' ? null : require('expo-notifications');
 
 const CHANNEL_ID = 'reminders';
-let remindersExplicitlyCancelled = false;
+const REMINDER_TITLES = ['☀️ Good morning!', '🥗 Lunch Time!', '💧 Stay Hydrated', '🌙 Dinner & Daily Review'];
+const isReminder = (item) => item.content?.data?.kind === 'daily-reminder' || REMINDER_TITLES.includes(item.content?.title);
+async function cancelReminderNotifications() {
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  for (const item of scheduled.filter(isReminder)) await Notifications.cancelScheduledNotificationAsync(item.identifier);
+}
 
 // Configure notification presentation behavior
 if (Platform.OS !== 'web' && Notifications?.setNotificationHandler) {
@@ -39,16 +45,10 @@ async function ensureAndroidChannel() {
  * Checks whether daily reminders are currently scheduled
  */
 export async function areRemindersScheduled() {
-  if (Platform.OS === 'web') {
-    try {
-      return typeof window !== 'undefined' && window.localStorage?.getItem('caloriesnap_reminders_enabled') === 'true';
-    } catch {
-      return false;
-    }
-  }
+  if (Platform.OS === 'web') return false;
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    return Array.isArray(scheduled) && scheduled.length > 0;
+    return Array.isArray(scheduled) && scheduled.filter(isReminder).length === 4;
   } catch {
     return false;
   }
@@ -143,34 +143,22 @@ export async function sendTestNotification(
 export async function scheduleDailyReminders(options = {}) {
   const { sendConfirmation = false } = options;
 
-  if (Platform.OS === 'web') {
-    try {
-      await requestNotificationPermissions();
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem('caloriesnap_reminders_enabled', 'true');
-      }
-      if (sendConfirmation) {
-        await sendTestNotification();
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  }
+  if (Platform.OS === 'web') return false;
 
   try {
     const hasPermission = await requestNotificationPermissions();
     if (!hasPermission) return false;
 
-    remindersExplicitlyCancelled = false;
+    await setSetting('reminders_enabled', true);
 
     // Clear existing notifications before rescheduling
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    await cancelReminderNotifications();
 
     // 1. Breakfast Reminder (8:30 AM)
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '☀️ Good morning!',
+        data: { kind: 'daily-reminder' },
         body: 'Start your day right — log your breakfast to keep your streak alive.',
         sound: true,
         ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
@@ -182,6 +170,7 @@ export async function scheduleDailyReminders(options = {}) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '🥗 Lunch Time!',
+        data: { kind: 'daily-reminder' },
         body: 'Snap a photo of your lunch or describe what you ate with Sage AI.',
         sound: true,
         ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
@@ -193,6 +182,7 @@ export async function scheduleDailyReminders(options = {}) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '💧 Stay Hydrated',
+        data: { kind: 'daily-reminder' },
         body: 'Time for a glass of water! Keep your daily hydration goal on track.',
         sound: true,
         ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
@@ -204,6 +194,7 @@ export async function scheduleDailyReminders(options = {}) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '🌙 Dinner & Daily Review',
+        data: { kind: 'daily-reminder' },
         body: "Check your remaining calories and get today's nutrition review from Sage.",
         sound: true,
         ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
@@ -226,7 +217,8 @@ export async function scheduleDailyReminders(options = {}) {
     return true;
   } catch (err) {
     console.warn('Failed to schedule daily reminders:', err);
-    await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    await cancelReminderNotifications().catch(() => {});
+    await setSetting('reminders_enabled', false).catch(() => {});
     return false;
   }
 }
@@ -239,13 +231,14 @@ export async function scheduleDailyReminders(options = {}) {
 export async function ensureRemindersOnFirstLaunch() {
   if (Platform.OS === 'web') return false;
   try {
+    if (await getSetting('reminders_enabled', null) === false) return false;
     const { status } = await Notifications.getPermissionsAsync();
     if (status === 'undetermined') {
       return await scheduleDailyReminders();
     }
-    if (status === 'granted' && !remindersExplicitlyCancelled) {
+    if (status === 'granted') {
       const existing = await Notifications.getAllScheduledNotificationsAsync();
-      if (!existing || existing.length === 0) {
+      if (!existing || existing.filter(isReminder).length !== 4) {
         return await scheduleDailyReminders();
       }
     }
@@ -260,19 +253,28 @@ export async function ensureRemindersOnFirstLaunch() {
  * Cancels all scheduled local reminders
  */
 export async function cancelAllReminders() {
-  remindersExplicitlyCancelled = true;
-  if (Platform.OS === 'web') {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem('caloriesnap_reminders_enabled', 'false');
-      }
-    } catch {}
-    return;
-  }
+  await setSetting('reminders_enabled', false);
+  if (Platform.OS === 'web') return;
   try {
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    await cancelReminderNotifications();
   } catch (err) {
     console.warn('Failed to cancel reminders:', err);
     throw err;
   }
+}
+
+export async function notifyScanReady(scanJobId) {
+  if (Platform.OS === 'web' || AppState?.currentState === 'active') return false;
+  if ((await Notifications.getPermissionsAsync()).status !== 'granted') return false;
+  if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('scans', { name: 'Meal scan results', importance: Notifications.AndroidImportance.DEFAULT });
+  await Notifications.scheduleNotificationAsync({ content: { title: 'Your meal is ready to review', body: 'Open CalorieSnap to check the estimate and save it.', data: { scanJobId }, ...(Platform.OS === 'android' ? { channelId: 'scans' } : {}) }, trigger: null });
+  return true;
+}
+export function subscribeToScanNotifications(onOpen) {
+  if (Platform.OS === 'web') return () => {};
+  let mounted = true;
+  const handle = (response) => { const id = response?.notification?.request?.content?.data?.scanJobId; if (mounted && typeof id === 'string') onOpen(id); };
+  const listener = Notifications.addNotificationResponseReceivedListener(handle);
+  Notifications.getLastNotificationResponseAsync().then(handle).catch(() => {});
+  return () => { mounted = false; listener.remove(); };
 }

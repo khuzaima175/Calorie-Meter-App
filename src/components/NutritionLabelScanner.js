@@ -14,8 +14,8 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import { Ionicons } from '@expo/vector-icons';
+
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import Button from './Button';
 import { colors, radius, typography } from '../theme/colors';
@@ -28,6 +28,10 @@ export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, 
   const [cameraKey, setCameraKey] = useState(1);
   const [isCapturing, setIsCapturing] = useState(false);
   const cameraRef = useRef(null);
+  const mounted = useRef(true);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const isCapturingRef = useRef(false);
 
   // Force a clean native remount after initial layout pass on Android
@@ -38,31 +42,11 @@ export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, 
     return () => clearTimeout(timer);
   }, []);
 
-  // Resize label image on-device to 1600px width (preserves micro-text on nutrition tables/ingredients while keeping payload small)
-  const optimizeLabelImage = async (uri) => {
-    const t0 = Date.now();
-    try {
-      const manipResult = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 1600 } }],
-        { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-      );
-      const resizeMs = Date.now() - t0;
-      const sizeKb = Math.round(((manipResult.base64?.length || 0) * 0.75) / 1024);
-      console.log(`[Perf] 🏷️ Label resized to 1600px in ${resizeMs}ms (JPEG payload: ~${sizeKb} KB)`);
-      return {
-        uri: manipResult.uri,
-        base64: manipResult.base64,
-        mimeType: 'image/jpeg',
-      };
-    } catch (err) {
-      console.warn('Label optimization fallback:', err);
-      return null;
-    }
-  };
+  // Keep the raw URI; the shared runner prepares the label after the preview handoff.
+  const optimizeLabelImage = async (uri) => ({ uri, mimeType: 'image/jpeg' });
 
   const handleCapture = async () => {
-    if (!cameraRef.current || isProcessing || isCapturingRef.current) return;
+    if (!cameraRef.current || !cameraReady || isProcessing || isCapturingRef.current) return;
     isCapturingRef.current = true;
     setIsCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -72,8 +56,9 @@ export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, 
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
-        skipProcessing: true,
+        skipProcessing: false,
       });
+      if (!mounted.current) return;
       const captureMs = Date.now() - t0;
       console.log(`[Perf] 📸 Label camera capture: ${captureMs}ms`);
 
@@ -81,7 +66,7 @@ export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, 
         onCaptureStart?.(photo.uri);
         handedOff = true;
         const optimized = await optimizeLabelImage(photo.uri);
-        if (optimized?.base64) {
+        if (optimized?.uri) {
           onCaptureLabel(optimized);
         } else {
           onCaptureAbort?.();
@@ -113,12 +98,13 @@ export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, 
         quality: 0.9,
       });
 
+      if (!mounted.current) return;
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
         onCaptureStart?.(asset.uri);
         handedOff = true;
         const optimized = await optimizeLabelImage(asset.uri);
-        if (optimized?.base64) {
+        if (optimized?.uri) {
           onCaptureLabel(optimized);
         } else {
           onCaptureAbort?.();
@@ -144,20 +130,20 @@ export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, 
     );
   }
 
-  if (!permission.granted) {
+  if (!permission.granted || cameraError) {
     return (
       <View style={[styles.permissionWrapper, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }]}>
         <View style={styles.permissionCard}>
           <View style={styles.iconCircle}>
             <Ionicons name="document-text" size={36} color={colors.sageBright} />
           </View>
-          <Text style={styles.permTitle}>Camera Access Required</Text>
+          <Text style={styles.permTitle}>{cameraError ? 'Camera unavailable' : 'Camera Access Required'}</Text>
           <Text style={styles.permSubtitle}>
-            Grant camera access to scan Nutrition Facts tables directly from food packages.
+            {cameraError ? 'Try the camera again or choose a label photo below.' : 'Grant camera access to scan Nutrition Facts tables directly from food packages.'}
           </Text>
           <Button
-            title="Enable Camera"
-            onPress={requestPermission}
+            title={cameraError ? 'Retry Camera' : 'Enable Camera'}
+            onPress={cameraError ? () => { setCameraError(null); setCameraReady(false); setCameraKey((k) => k + 1); } : requestPermission}
             size="lg"
             style={styles.permBtn}
           />
@@ -178,6 +164,8 @@ export default function NutritionLabelScanner({ onCaptureLabel, onCaptureStart, 
       {/* 1. Live Native Camera Feed */}
       {permission.granted && (
         <CameraView
+          onCameraReady={() => { setCameraReady(true); setCameraError(null); }}
+          onMountError={() => { setCameraReady(false); setCameraError('Camera unavailable'); }}
           key={cameraKey}
           ref={cameraRef}
           style={styles.cameraView}
@@ -285,12 +273,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   cameraView: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },
   overlayContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   centerContainer: {
     flex: 1,
@@ -395,7 +383,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   centerReticleLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 5,

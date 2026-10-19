@@ -12,7 +12,7 @@
 [![SQLite](https://img.shields.io/badge/SQLite-Local%20First-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Google Gemini](https://img.shields.io/badge/Gemini-3.5%20Flash--Lite-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests: Passing](https://img.shields.io/badge/Tests-11%2F11%20Passing-brightgreen.svg)](tests/core-calculations.test.js)
+[![Tests](https://img.shields.io/badge/Tests-npm%20test-brightgreen.svg)](tests)
 
 </div>
 
@@ -52,14 +52,18 @@
 
 **CalorieSnap Pro** is a modern, privacy-focused health and nutrition tracker designed from the ground up to be **fast, dependable, and completely offline-capable**. Unlike traditional calorie apps that require paid subscriptions, mandatory cloud profiles, or constant internet connectivity, CalorieSnap Pro keeps your personal nutrition and exercise diaries stored securely in a local **SQLite database** on your device.
 
-When online, the app harnesses Google's cutting-edge **Gemini 3.5 Flash-Lite** multimodal AI to analyze food photos, read packaged Nutrition Facts labels, parse spoken or typed meal descriptions, and provide personalized dietary recommendations in sub-second inference time.
+When online, the app uses **Gemini 3.5 Flash-Lite** to estimate nutrition from photos, read Nutrition Facts labels, parse typed meal descriptions, and provide dietary suggestions. Response time varies with the connection, image, and provider.
+
+Photo, label, text, and barcode scans run outside screen lifetimes. See your captured photo immediately, choose **Continue using app**, and return through the scan banner to review and save. The runner permits one active scan and three pending scans, keeps durable drafts, supports cancellation/retry, and saves to the original diary date. Restarting the app restores interrupted scans for explicit retry; processing after closing or locking the app is not guaranteed.
+
+Fresh diaries start empty. Demo data is available explicitly in Profile. Three compact, locally bundled editorial images add approximately 100 KB; [asset provenance and prompts](assets/editorial/README.md) are recorded separately.
 
 ---
 
 ## ✨ Key Features
 
 ### 1. Multimodal AI Meal Scanner
-- **Instant Photo Recognition**: Snap a picture of any meal plate to estimate portion weights, calories, and macronutrients.
+- **Photo Recognition**: Snap a meal, see the photo before recognition completes, and review estimated portions, calories, and macronutrients when ready.
 - **Specialized Cuisine Understanding**: Fine-tuned prompt architecture for Pakistani, South Asian, Mediterranean, and Western dishes (e.g., distinguishing oily curries, whole-wheat rotis, parathas, biryani, daal, and roasted chicken).
 - **Multi-Photo Tray**: Capture up to 4 angles of a meal or multi-dish spread in a single scan.
 - **Portion Modifiers**: Interactive quick chips (*"Small Plate"*, *"Standard"*, *"Large Serving"*, *"Light Oil"*) and custom text notes for pinpoint accuracy.
@@ -101,13 +105,13 @@ When online, the app harnesses Google's cutting-edge **Gemini 3.5 Flash-Lite** m
 
 ### 9. Sage AI Nutritionist & Meal Planner
 - **Context-Aware Coaching**: Sage reviews your actual daily consumed calories, macros, profile metrics, and goals to provide actionable advice.
-- **Instant Response Time**: Powered by Gemini 3.5 Flash-Lite for sub-second, natural conversation without artificial typing delays.
+- **Conversational Replies**: Powered by Gemini 3.5 Flash-Lite. Text appears progressively after a complete response is received; this is not network streaming.
 - **Personalized Meal Planner**: Generates a complete 1-day meal plan matching your exact calorie and macro targets.
 - **Daily Diet Review**: Generates a 3-point structured summary covering achievements, areas for improvement, and focus targets for tomorrow.
 - **Safe Token Budgeting**: 7,500-token sliding window sanitizer that preserves user-model pairs and prevents context overflow errors.
 
 ### 10. Data Backup, Restore & Factory Reset
-- **JSON Backup Export**: Export your entire database (meals, exercises, water records, profile metrics, goals) as a structured JSON file.
+- **JSON Backup Export**: Export meals, exercises, water records, profile metrics, and goals. API credentials and pending scans are excluded. Photo references are local to the current device; image bytes are not included.
 - **JSON Backup Import**: Restore previous backups with schema-version forward migration.
 - **Permanent Image Storage**: Photos are persisted in permanent device storage (`FileSystem.documentDirectory`) on native devices and `IndexedDB` on web to prevent operating-system cache purges.
 - **Factory Reset Safeguards**: Complete data wipe option protected by double-confirmation dialogs.
@@ -119,9 +123,10 @@ When online, the app harnesses Google's cutting-edge **Gemini 3.5 Flash-Lite** m
   - 💧 **04:30 PM**: Hydration Check (+250ml)
   - 🌙 **07:45 PM**: Dinner & Daily Macro Review
 - **Privacy First**: Fully local notifications without external push servers or tokens.
+- Reminder opt-out survives restarts. Recurring reminders are native-only; scan-ready notifications use a separate notification category and require existing permission.
 
-### 12. Complete Accessibility (A11y)
-- **WCAG AA Compliance**: Full screen reader labels, hints, roles (`button`, `tab`, `switch`), and states (`selected`, `disabled`, `checked`) across every screen and interactive component.
+### 12. Accessibility (A11y)
+- Screen reader labels, roles, states, live scan status, brighter secondary labels, and reduced-motion support. Physical-device accessibility validation is still required; this project does not claim a completed WCAG audit.
 
 ---
 

@@ -138,6 +138,7 @@ test('Clearing AI state discards an in-flight meal plan', async () => {
 
 test('Notification service configures Android channel, schedules 4 daily reminders, and sends test/confirmation banners', async () => {
   const scheduled = [];
+  const preferences = new Map();
   const channels = [];
   let permStatus = 'granted';
   const notificationsMock = {
@@ -148,13 +149,15 @@ test('Notification service configures Android channel, schedules 4 daily reminde
     getPermissionsAsync: async () => ({ status: permStatus }),
     requestPermissionsAsync: async () => ({ status: permStatus }),
     cancelAllScheduledNotificationsAsync: async () => { scheduled.length = 0; },
-    scheduleNotificationAsync: async (item) => { scheduled.push(item); },
+    cancelScheduledNotificationAsync: async (id) => { const i=scheduled.findIndex(s=>s.identifier===id); if(i>=0)scheduled.splice(i,1); },
+    scheduleNotificationAsync: async (item) => { scheduled.push({ ...item, identifier: `notification-${scheduled.length}-${Date.now()}` }); },
     getAllScheduledNotificationsAsync: async () => scheduled.filter((s) => s.trigger !== null),
   };
 
   const svc = createLoader({
     'react-native': { Platform: { OS: 'android' } },
     'expo-notifications': notificationsMock,
+    [path.resolve('src/services/databaseService')]: { getSetting: async (key, fallback) => preferences.get(key) ?? fallback, setSetting: async (key,value) => preferences.set(key,value) },
   })('src/services/notificationService.js');
 
   // 1. First launch when permission is already granted (e.g. Expo Go) with 0 scheduled reminders
@@ -178,4 +181,9 @@ test('Notification service configures Android channel, schedules 4 daily reminde
   await svc.cancelAllReminders();
   assert.equal(await svc.areRemindersScheduled(), false);
   assert.equal(await svc.ensureRemindersOnFirstLaunch(), false);
+  const restarted = createLoader({ 'react-native': { Platform: { OS: 'android' } }, 'expo-notifications': notificationsMock,
+    [path.resolve('src/services/databaseService')]: { getSetting: async (key, fallback) => preferences.get(key) ?? fallback, setSetting: async (key,value) => preferences.set(key,value) },
+  })('src/services/notificationService.js');
+  assert.equal(await restarted.ensureRemindersOnFirstLaunch(), false, 'Opt-out must survive a fresh module/process');
+  assert.ok(scheduled.every(item => item.content?.data?.kind !== 'daily-reminder'), 'Only reminder notifications are cancelled');
 });

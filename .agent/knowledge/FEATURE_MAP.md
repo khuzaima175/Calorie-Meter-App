@@ -1,5 +1,7 @@
 # Feature Map — CalorieSnap Pro
 
+> Historical baseline below. See [PROJECT_SKILL](PROJECT_SKILL.md) and [verification](../../VERIFICATION_2026-10-19.md) for the 19 October scan inbox, retained photo/edit drafts, background navigation, clean initial diary, and current evidence. Sub-second inference is not guaranteed.
+
 > **Last Reviewed:** 2026-10-17 | **Git Revision:** `2f87a3e` (`main`) | **Test Suite:** 54/54 Passing (`npm test`)
 
 ---

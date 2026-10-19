@@ -70,3 +70,30 @@ test('Fast mode uses minimal thinking and falls back cleanly on generic 400 INVA
   await gemini.analyzeFoodPhoto(photos, 'image/jpeg', {});
   assert.equal(requests[2].generationConfig.thinkingConfig, undefined);
 });
+
+test('User cancellation aborts the actual fetch and never starts a fallback or vision retry',async()=>{
+  const {gemini}=loadGemini([]);let signal,calls=0;
+  global.fetch=async(_url,options)=>{calls++;signal=options.signal;return new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Object.assign(new Error('aborted'),{name:'AbortError'})),{once:true}));};
+  const controller=new AbortController();const pending=gemini.analyzeFoodPhoto(photos,'image/jpeg',{signal:controller.signal});
+  controller.abort();await assert.rejects(pending,e=>e.code==='CANCELLED');assert.equal(signal.aborted,true);assert.equal(calls,1);
+  await assert.rejects(gemini.analyzeFoodPhoto(photos,'image/jpeg',{signal:controller.signal}),e=>e.code==='CANCELLED');assert.equal(calls,1);
+});
+
+test('Lenient vision retries share the overall deadline',async(t)=>{
+  let now=100000;t.mock.method(Date,'now',()=>now);
+  const {gemini}=loadGemini([]);let calls=0;
+  global.fetch=async()=>{calls++;now+=45001;return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify(noFood)}]}}]})};};
+  await assert.rejects(gemini.analyzeFoodPhoto(photos),e=>e.code==='TIMEOUT');assert.equal(calls,1);
+});
+
+test('An unrelated bad schema cannot disable fast mode for subsequent valid requests',async()=>{
+  const {gemini,requests}=loadGemini([{status:400,body:JSON.stringify({error:{message:'responseSchema contains an unknown property',status:'INVALID_ARGUMENT'}})},food]);
+  await assert.rejects(gemini.analyzeFoodPhoto(photos));await gemini.analyzeFoodPhoto(photos);
+  assert.equal(requests.length,2);assert.deepEqual(requests[1].generationConfig.thinkingConfig,{thinkingLevel:'MINIMAL'});
+});
+
+test('Thinking compatibility learned for the primary model does not disable fallback fast mode',async()=>{
+  const {gemini,requests}=loadGemini([{status:400,body:JSON.stringify({error:{message:'Request contains an invalid argument.'}})},food,{status:404,body:JSON.stringify({error:{message:'Model not found'}})},food]);
+  await gemini.analyzeFoodPhoto(photos);await gemini.analyzeFoodPhoto(photos);
+  assert.equal(requests.length,4);assert.equal(requests[2].generationConfig.thinkingConfig,undefined);assert.deepEqual(requests[3].generationConfig.thinkingConfig,{thinkingLevel:'MINIMAL'});
+});

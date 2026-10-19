@@ -1,3 +1,4 @@
+import useReducedMotion from '../hooks/useReducedMotion';
 // src/components/MacroBar.js
 // Earth-Tone Macronutrient Progress Bars (Protein, Carbs, Fat)
 
@@ -13,18 +14,20 @@ function SingleMacroItem({
   bgColor,
   unit = 'g',
 }) {
+  const reducedMotion = useReducedMotion();
   const widthAnim = useRef(new Animated.Value(0)).current;
   const percentage = goal > 0 ? Math.min(1, current / goal) : 0;
   const percentDisplay = Math.round((current / (goal || 1)) * 100);
 
   useEffect(() => {
+    if (reducedMotion) { widthAnim.setValue(percentage); return; }
     Animated.spring(widthAnim, {
       toValue: percentage,
       useNativeDriver: false,
       damping: 18,
       stiffness: 100,
     }).start();
-  }, [percentage, widthAnim]);
+  }, [percentage, widthAnim, reducedMotion]);
 
   const animatedWidth = widthAnim.interpolate({
     inputRange: [0, 1],

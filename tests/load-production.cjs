@@ -16,6 +16,7 @@ module.exports = function createLoader(mocks = {}) {
       plugins: ['@babel/plugin-transform-react-jsx', '@babel/plugin-transform-modules-commonjs'],
     });
     const customRequire = (name) => {
+      if (name === '@expo/vector-icons/Ionicons' && mocks['@expo/vector-icons']) return { __esModule: true, default: mocks['@expo/vector-icons'].Ionicons };
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name.startsWith('.')) {
         const target = path.resolve(path.dirname(filename), name);

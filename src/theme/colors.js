@@ -33,7 +33,7 @@ export const colors = {
   // Typography
   textPrimary: '#F2F2F7',     // Pure legible warm white
   textSecondary: '#A1A1A6',   // Muted slate gray
-  textTertiary: '#636366',    // Subtle timestamp / placeholder gray
+  textTertiary: '#96969E',    // Readable small labels and placeholders on charcoal surfaces
   textInverse: '#121214',     // Dark text for bright buttons
 
   // Status & Feedback

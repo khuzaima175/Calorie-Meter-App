@@ -1,3 +1,4 @@
+import useReducedMotion from '../hooks/useReducedMotion';
 // src/components/LoadingShimmer.js
 // Warm glowing skeleton placeholder for bootstrapping and screen transitions
 
@@ -6,9 +7,11 @@ import { View, StyleSheet, Animated } from 'react-native';
 import { colors, radius } from '../theme/colors';
 
 export default function LoadingShimmer() {
+  const reducedMotion = useReducedMotion();
   const opacityAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
+    if (reducedMotion) { opacityAnim.setValue(0.5); return; }
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(opacityAnim, {
@@ -25,7 +28,7 @@ export default function LoadingShimmer() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, [opacityAnim]);
+  }, [opacityAnim, reducedMotion]);
 
   return (
     <View style={styles.container}>

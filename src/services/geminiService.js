@@ -1,13 +1,13 @@
 import { useProfileStore } from '../stores/useProfileStore';
 import { normalizeAnalysis, normalizeMealPlan } from './validation';
 
-// Models: 3.5 Flash-Lite as Primary (ultra-fast sub-second inference), Flash-Lite-Latest as Fallback
+// Keep the configured model family; actual latency depends on the network and provider.
 const PRIMARY_MODEL = 'gemini-3.5-flash-lite';
 const FALLBACK_MODEL = 'gemini-flash-lite-latest';
 const CHAT_MODEL = 'gemini-3.5-flash-lite';
 
-// Flips to true once a model rejects generationConfig.thinkingConfig so we stop sending it.
-let thinkingConfigUnsupported = false;
+// Remember a successful compatibility retry separately for each model.
+const unsupportedThinkingModels = new Set();
 
 /**
  * Returns current real-time meal period for Pakistani / local daily routine
@@ -115,6 +115,8 @@ class RateLimiter {
 }
 
 const rateLimiter = new RateLimiter(60000);
+// Actual HTTP attempts also consume provider quota, including compatibility retries.
+const networkRateLimiter = new RateLimiter(60000);
 
 /**
  * Parses raw Gemini API error responses into user-friendly, actionable messages
@@ -153,7 +155,7 @@ export function parseAndFormatGeminiError(errorInput, status = 0) {
     return (
       '⚠️ Gemini AI Quota Reached\n\n' +
       'The default shared API key has temporarily reached its Google request quota limit. ' +
-      'You can paste your own free Gemini API key in Profile > Settings to get instant, unlimited access, or please try again in a few minutes.'
+      'You can paste your own free Gemini API key in Profile > Settings to use your own project quota, or please try again in a few minutes.'
     );
   }
 
@@ -296,162 +298,61 @@ export async function testGeminiApiKey(candidateKey) {
  */
 async function callGemini(contents, systemInstruction = '', model = PRIMARY_MODEL, options = {}) {
   const apiKey = getApiKey();
-  if (!apiKey || apiKey.startsWith('AIzaSy_REPLACE')) {
-    throw new Error('Please set your Gemini API key in Profile > Settings or in your .env file.');
-  }
-
+  if (!apiKey || apiKey.startsWith('AIzaSy_REPLACE')) throw new Error('Please set your Gemini API key in Profile > Settings.');
+  const cancelled = () => Object.assign(new Error('Scan cancelled.'), { name: 'AbortError', code: 'CANCELLED' });
+  if (options.signal?.aborted) throw cancelled();
+  const budget = options.budget || { deadline: Date.now() + 45000, attempts: 0 };
+  if (Date.now() >= budget.deadline || budget.attempts >= 3) throw Object.assign(new Error('AI analysis took too long. Your photo is saved; try again.'), { code: 'TIMEOUT' });
   if (!options.isRetry) {
-    if (!rateLimiter.canRequest()) {
-      const waitSec = rateLimiter.getWaitSeconds();
-      throw new Error(`AI rate limit reached. Please wait ${waitSec} seconds before asking again.`);
-    }
+    if (!rateLimiter.canRequest()) throw new Error(`AI rate limit reached. Please wait ${rateLimiter.getWaitSeconds()} seconds before asking again.`);
     rateLimiter.recordRequest();
   }
-
-  // Send API key via secure x-goog-api-key header (omits key from URL logs/proxies)
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-  const generationConfig = {
-    temperature: options.temperature ?? 0.2,
-    topP: options.topP ?? 0.95,
-    maxOutputTokens: options.maxOutputTokens ?? 2048,
-  };
-
-  if (options.jsonMode) {
-    generationConfig.responseMimeType = 'application/json';
-    if (options.responseSchema) {
-      generationConfig.responseSchema = options.responseSchema;
-    }
-  }
-
-  // Structured extraction does not benefit from deep reasoning; MINIMAL thinking cuts latency on Gemini 3.5.
-  const useFastMode = Boolean(options.fast) && !thinkingConfigUnsupported;
-  if (useFastMode) {
-    generationConfig.thinkingConfig = { thinkingLevel: 'MINIMAL' };
-  }
-
-  const body = {
-    contents,
-    generationConfig,
-  };
-
-  if (systemInstruction) {
-    body.systemInstruction = {
-      parts: [{ text: systemInstruction }],
-    };
-  }
-
-  // 25-second AbortController timeout to prevent infinite hangs on stalled connections
+  if (!networkRateLimiter.canRequest()) throw new Error(`AI request limit reached. Please wait ${networkRateLimiter.getWaitSeconds()} seconds before retrying.`);
+  networkRateLimiter.recordRequest(); budget.attempts++;
+  const useFastMode = Boolean(options.fast) && !unsupportedThinkingModels.has(model) && !options.disableThinking;
+  const generationConfig = { temperature: options.temperature ?? 0.2, topP: options.topP ?? 0.95, maxOutputTokens: options.maxOutputTokens ?? 2048 };
+  if (options.jsonMode) { generationConfig.responseMimeType = 'application/json'; if (options.responseSchema) generationConfig.responseSchema = options.responseSchema; }
+  if (useFastMode) generationConfig.thinkingConfig = { thinkingLevel: 'MINIMAL' };
+  const body = { contents, generationConfig, ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}) };
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
-
+  const abort = () => controller.abort();
+  options.signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, Math.min(25000, budget.deadline - Date.now()));
+  const retry = async (nextModel, extras = {}) => {
+    clearTimeout(timer);
+    return callGemini(contents, systemInstruction, nextModel, { ...options, ...extras, budget, isRetry: true });
+  };
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body), signal: controller.signal,
     });
-
+    if (options.signal?.aborted) throw cancelled();
     if (!response.ok) {
       const errorText = await response.text();
-
-      // If 429 Quota Exceeded or Rate Limit, do NOT retry (same project/key limit)
-      if (response.status === 429 || errorText.includes('RESOURCE_EXHAUSTED') || errorText.includes('quota')) {
-        const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
-        throw new Error(friendlyMsg);
+      if (useFastMode && response.status === 400 && !/API_KEY_INVALID|API key not valid/i.test(errorText) && /thinking|Request contains an invalid argument/i.test(errorText)) {
+        const result = await retry(model, { disableThinking: true });
+        // Learn only after a successful compatibility retry, separately for each model.
+        unsupportedThinkingModels.add(model);
+        return result;
       }
-
-      // If invalid key, fail fast immediately
-      if (errorText.includes('API_KEY_INVALID') || errorText.includes('API key not valid')) {
-        const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
-        throw new Error(friendlyMsg);
-      }
-
-      // Google's REST API often returns a generic 400 INVALID_ARGUMENT ("Request contains an invalid argument.")
-      // when thinkingConfig is rejected; remember and retry once without fast mode.
-      if (useFastMode && response.status === 400) {
-        console.warn(`Model ${model} rejected thinkingConfig; retrying without fast mode.`);
-        thinkingConfigUnsupported = true;
-        return await callGemini(contents, systemInstruction, model, { ...options, isRetry: true });
-      }
-
-      // If 404 (model missing) or 503 (model overloaded) on PRIMARY, retry with FALLBACK ONCE
-      if (model === PRIMARY_MODEL && (response.status === 404 || response.status === 503) && !options.isRetry) {
-        console.warn(`Primary model ${PRIMARY_MODEL} returned ${response.status}, retrying once with ${FALLBACK_MODEL}...`);
-        return await callGemini(contents, systemInstruction, FALLBACK_MODEL, { ...options, isRetry: true });
-      }
-
-      const friendlyMsg = parseAndFormatGeminiError(errorText, response.status);
-      throw new Error(friendlyMsg);
+      if (model === PRIMARY_MODEL && [404,500,502,503,504].includes(response.status) && !options.isRetry) return await retry(FALLBACK_MODEL);
+      throw Object.assign(new Error(parseAndFormatGeminiError(errorText, response.status)), { code: response.status === 429 ? 'QUOTA' : 'API_ERROR' });
     }
-
     const data = await response.json();
-
-    // Check for safety filter blocks or empty candidates
+    if (options.signal?.aborted) throw cancelled();
+    if (Date.now() >= budget.deadline) throw Object.assign(new Error('AI analysis timed out. Your photo is saved; try again.'), { code: 'TIMEOUT' });
     const candidate = data?.candidates?.[0];
-    if (!candidate) {
-      if (data?.promptFeedback?.blockReason) {
-        throw new Error(`⚠️ Request was blocked by AI safety filters (${data.promptFeedback.blockReason}). Please modify the food description or image.`);
-      }
-      throw new Error('AI returned an empty response. Please try again.');
-    }
-    if (candidate.finishReason === 'SAFETY') {
-      throw new Error('⚠️ AI flagged this content as unsafe. Please try a different angle or food description.');
-    }
-
-    const parts = candidate.content?.parts || [];
-    // Extract non-thought text parts (handles models with thinking parts)
-    const textParts = parts.filter((p) => !p.thought && typeof p.text === 'string' && p.text.trim());
-    const candidateText = textParts.length > 0
-      ? textParts.map((p) => p.text).join('')
-      : (parts[0]?.text || '');
-    if (!candidateText.trim()) throw new Error('AI returned an empty response. Please try again.');
-    return candidateText;
+    if (!candidate || candidate.finishReason === 'SAFETY') throw new Error('AI could not analyze this content. Try another photo or describe the meal.');
+    const text = (candidate.content?.parts || []).filter((p) => !p.thought && typeof p.text === 'string').map((p) => p.text).join('');
+    if (!text.trim()) throw new Error('AI returned an empty response. Try again.');
+    return text;
   } catch (error) {
-    clearTimeout(timeoutId);
-
-    // Timeout error formatting
-    if (error.name === 'AbortError' || error.message?.includes('aborted')) {
-      throw new Error('⚠️ AI request timed out (25s). Please check your internet connection and try again.');
-    }
-
-    // Pass through already formatted errors
-    if (
-      error.message.includes('Quota') ||
-      error.message.includes('quota') ||
-      error.message.includes('rate limit') ||
-      error.message.includes('Invalid Gemini API Key') ||
-      error.message.includes('Network Connection Error') ||
-      error.message.includes('timed out') ||
-      error.message.includes('safety filters')
-    ) {
-      throw error;
-    }
-
-    // Network connection errors
-    if (
-      error.message?.includes('Network request failed') ||
-      error.message?.includes('Failed to fetch') ||
-      error.message?.includes('network')
-    ) {
-      throw new Error('⚠️ Network Connection Error\n\nPlease check your internet connection and try again.');
-    }
-
-    // If PRIMARY model failed with an unhandled network glitch and has not retried yet, try FALLBACK ONCE
-    if (model === PRIMARY_MODEL && !options.isRetry) {
-      return await callGemini(contents, systemInstruction, FALLBACK_MODEL, { ...options, isRetry: true });
-    }
-
+    if (options.signal?.aborted) throw cancelled();
+    if (controller.signal.aborted || error.name === 'AbortError') throw Object.assign(new Error('AI analysis timed out. Your photo is saved; try again.'), { code: 'TIMEOUT' });
+    if (/Network request failed|Failed to fetch|networkerror/i.test(error.message || '')) throw Object.assign(new Error('Network connection failed. Your photo is saved; retry when connected.'), { code: 'NETWORK' });
     throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  } finally { clearTimeout(timer); options.signal?.removeEventListener('abort', abort); }
 }
-
 /**
  * Extracts and cleans JSON from raw markdown text
  */
@@ -476,6 +377,7 @@ export function cleanJsonText(rawText) {
  * and real-time meal period awareness.
  */
 export async function analyzeFoodPhoto(photosInput, mimeType = 'image/jpeg', context = {}) {
+  const budget = { deadline: Date.now() + 45000, attempts: 0 };
   const currentPeriod = context.mealPeriod || getCurrentMealPeriod();
   const userNote = (context.userNote || '').trim();
 
@@ -513,7 +415,7 @@ export async function analyzeFoodPhoto(photosInput, mimeType = 'image/jpeg', con
   }
 
   const systemPrompt = `You are a certified clinical sports dietitian and computer vision food expert with deep expertise in Pakistani, South Asian, and International cuisines.
-Analyze all provided meal photographs and calculate exact portions and macronutrients.
+Analyze the visible food in the supplied photographs and estimate portions and macronutrients. Base identification on the images, not the example meals or time of day. Never invent rotis, daal, or another item just because it appears in these guidelines. Multiple photos may show the same plate from different angles; count each food item once.
 
 Specialized Pakistani / Desi Cuisine Guidelines:
 - Rotis & Breads:
@@ -545,8 +447,8 @@ Specialized Pakistani / Desi Cuisine Guidelines:
 - Portion & User Context:
   * If the user provided notes (e.g. "ate 40%", "half plate", "light oil", "skinless chicken"), mathematically scale the final macros and calorie output to match that exact portion.
 - Image Quality & Recognition Policy (IMPORTANT):
-  * ALWAYS assume the user is photographing something they are eating or drinking. Photos may be dim, angled, blurry, partially cropped, taken in a restaurant, or show food in a bowl, tray, foil, wrapper, or packaging.
-  * If ANY food, drink, snack, dish, ingredient, or packaged edible item is even partially visible, you MUST identify your best guess, estimate realistic macros, and lower the "confidence" value instead of rejecting the photo.
+  * Photos may be dim, angled, blurry, partially cropped, taken in a restaurant, or show food in a bowl, tray, foil, wrapper, or packaging. Use visible evidence and user notes; time of day only selects meal_type.
+  * If food, drink, snack, dish, ingredient, or packaged edible item is partially visible, describe what you can identify and estimate realistic macros. Explain material uncertainty briefly in health_tips; do not claim exact measurements or confidence percentages.
   * Set "is_no_food": true ONLY when you are highly certain the image contains NOTHING edible at all (e.g. a selfie, a face, a document, a laptop, furniture, a pet, an empty table or a fully black/blank frame). In that case also set calories/protein/carbs/fat to 0 and "name": "Not a recognizable food".
   * Never set "is_no_food": true together with a non-zero calorie estimate.
 
@@ -563,7 +465,6 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
   "sugar": 3,
   "sodium": 520,
   "health_score": 8,
-  "confidence": 0.94,
   "is_water": false,
   "water_ml": 0,
   "is_no_food": false,
@@ -598,11 +499,13 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
       responseSchema: FOOD_ANALYSIS_SCHEMA,
       fast: true,
       isRetry: Boolean(extraInstruction),
+      budget,
+      signal: context.signal,
     });
     try {
       return { raw, parsed: JSON.parse(cleanJsonText(raw)) };
     } catch {
-      console.error('Failed to parse Gemini photo response:', raw);
+      console.warn('AI returned an invalid nutrition response.');
       throw new Error('AI was unable to parse the food structure. Please try another angle or enter details.');
     }
   };
@@ -620,7 +523,7 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
   if (isGenuineNoFood(parsed)) {
     // Second, more lenient pass before giving up on the photo (dim / angled shots are common).
     ({ parsed } = await requestVision(
-      'IMPORTANT: A previous pass reported that no food was visible. Look again carefully - the photo may be dim, angled, blurry or partially cropped. If ANY food, drink, snack, dish or packaged edible item is visible, identify your best guess and estimate macros with a lower confidence. Only set is_no_food to true if the image clearly contains nothing edible.'
+      'A previous pass reported that no food was visible. Check the visible evidence once more, allowing for dim lighting or a cropped plate. If food or drink is visible, identify it and estimate its macros. Do not invent food when none is visible. Keep is_no_food true for an image containing nothing edible.'
     ));
   }
   if (isGenuineNoFood(parsed)) {
@@ -632,7 +535,7 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
   try {
     return normalizeAnalysis(parsed);
   } catch (err) {
-    console.error('Failed to normalize Gemini photo response:', parsed, err);
+    console.warn('AI returned an invalid food estimate.');
     throw new Error('AI was unable to parse the food structure. Please try another angle or enter details.');
   }
 }
@@ -640,7 +543,7 @@ Return ONLY a valid, raw JSON object (without markdown code fences) with the exa
 /**
  * 2. Nutrition Label Scanner (OCR): Reads Nutrition Facts tables from packaged products
  */
-export async function analyzeNutritionLabel(base64Image, mimeType = 'image/jpeg') {
+export async function analyzeNutritionLabel(base64Image, mimeType = 'image/jpeg', context = {}) {
   const systemPrompt = `You are an OCR expert specializing in reading FDA and international Nutrition Facts food labels.
 Extract the nutrition data and return ONLY a valid JSON object:
 {
@@ -655,7 +558,6 @@ Extract the nutrition data and return ONLY a valid JSON object:
   "sugar": 1,
   "sodium": 180,
   "health_score": 7,
-  "confidence": 0.95,
   "dietary_tags": ["Packaged Good"],
   "health_tips": "Nutrition extracted directly from product label."
 }`;
@@ -681,12 +583,13 @@ Extract the nutrition data and return ONLY a valid JSON object:
     jsonMode: true,
     responseSchema: NUTRITION_LABEL_SCHEMA,
     fast: true,
+    signal: context.signal,
   });
   let parsed;
   try {
     parsed = JSON.parse(cleanJsonText(rawOutput));
   } catch (err) {
-    console.error('Failed to parse Gemini label response:', rawOutput);
+    console.warn('AI returned an invalid nutrition response.');
     throw new Error('Could not clearly read the label. Make sure the Nutrition Facts table is well-lit.');
   }
   if (parsed?.is_no_food && !(Number(parsed.calories) > 0)) {
@@ -737,7 +640,6 @@ Return ONLY a valid JSON object:
   "sugar": 2,
   "sodium": 420,
   "health_score": 8,
-  "confidence": 0.95,
   "ingredients": ["2 Whole Wheat Rotis", "Daal Mash", "Kachumber Salad"],
   "dietary_tags": ["High Fiber", "Pakistani Staple"],
   "health_tips": "Balanced protein and complex carbohydrates.",
@@ -761,6 +663,7 @@ Return ONLY a valid JSON object:
     jsonMode: true,
     responseSchema: FOOD_ANALYSIS_SCHEMA,
     fast: true,
+    signal: context.signal,
   });
   try {
     const cleaned = cleanJsonText(rawOutput);
@@ -779,7 +682,7 @@ Return ONLY a valid JSON object:
     if (err.message && err.message.includes('Not a recognizable food')) {
       throw err;
     }
-    console.error('Failed to parse Gemini text meal response:', rawOutput);
+    console.warn('AI returned an invalid nutrition response.');
     throw new Error('Could not calculate nutrition for meal. Please check the food description and try again.');
   }
 }
@@ -1032,7 +935,7 @@ Return ONLY valid JSON with this structure:
   try {
     return normalizeMealPlan(JSON.parse(cleanJsonText(rawOutput)));
   } catch (err) {
-    console.error('Failed to parse meal plan JSON:', rawOutput);
+    console.warn('AI returned an invalid meal plan.');
     throw new Error('Could not generate meal plan. Please try again.');
   }
 }
@@ -1097,7 +1000,7 @@ Return ONLY valid JSON with this exact schema:
       explanation: parsed.explanation || '',
     };
   } catch (err) {
-    console.error('Failed to parse AI exercise response:', rawOutput);
+    console.warn('AI returned an invalid exercise estimate.');
     throw new Error('Could not estimate exercise. Please enter details manually.');
   }
 }

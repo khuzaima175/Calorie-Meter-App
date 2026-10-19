@@ -1,3 +1,4 @@
+import useReducedMotion from '../hooks/useReducedMotion';
 // src/components/Button.js
 // Interactive button with spring scale press feedback and haptics
 
@@ -31,10 +32,11 @@ export default function Button({
   accessibilityHint,
   ...rest
 }) {
+  const reducedMotion = useReducedMotion();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
-    if (disabled || loading) return;
+    if (disabled || loading || reducedMotion) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     Animated.spring(scaleAnim, {
       toValue: 0.96,
@@ -45,7 +47,7 @@ export default function Button({
   };
 
   const handlePressOut = () => {
-    if (disabled || loading) return;
+    if (disabled || loading || reducedMotion) return;
     Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,

@@ -1,3 +1,4 @@
+import useReducedMotion from '../hooks/useReducedMotion';
 import { Alert } from '../services/alertService';
 // src/components/WaterTracker.js
 // Interactive Water Intake Tracker with liquid wave physics, droplet animation, and haptics
@@ -10,7 +11,7 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, typography } from '../theme/colors';
@@ -22,6 +23,7 @@ export default function WaterTracker({
   onUndoWater,
   style,
 }) {
+  const reducedMotion = useReducedMotion();
   const fillAnim = useRef(new Animated.Value(0)).current;
   const dropletAnim = useRef(new Animated.Value(0)).current;
 
@@ -29,15 +31,17 @@ export default function WaterTracker({
   const percentDisplay = Math.round(percentage * 100);
 
   useEffect(() => {
+    if (reducedMotion) { fillAnim.setValue(percentage); return; }
     Animated.spring(fillAnim, {
       toValue: percentage,
       useNativeDriver: false,
       damping: 15,
       stiffness: 80,
     }).start();
-  }, [percentage, fillAnim]);
+  }, [percentage, fillAnim, reducedMotion]);
 
   const triggerDropletAnimation = () => {
+    if (reducedMotion) return;
     dropletAnim.setValue(0);
     Animated.sequence([
       Animated.timing(dropletAnim, {

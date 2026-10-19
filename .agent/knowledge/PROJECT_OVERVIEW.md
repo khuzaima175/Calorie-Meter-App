@@ -1,5 +1,7 @@
 # Project Overview — CalorieSnap Pro
 
+> Historical baseline below. The 19 October scan architecture and verification supersede its counts, capture lifecycle, and streaming claims: see [PROJECT_SKILL](PROJECT_SKILL.md) and [verification](../../VERIFICATION_2026-10-19.md). Chat uses progressive display after receiving a complete response.
+
 > **Last Reviewed:** 2026-10-17 | **Git Revision:** `2f87a3e` (`main`) | **Test Suite:** 54/54 Passing (`npm test`)
 
 ---

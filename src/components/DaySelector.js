@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { parseISO, format, isToday, isYesterday, isTomorrow, addDays, subDays } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, typography } from '../theme/colors';

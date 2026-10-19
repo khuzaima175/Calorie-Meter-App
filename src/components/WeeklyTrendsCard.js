@@ -5,14 +5,14 @@ import { useNutritionStore } from '../stores/useNutritionStore';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { parseISO, format } from 'date-fns';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { get7DaySummary } from '../services/databaseService';
 import Card from './Card';
 import { colors, radius, typography } from '../theme/colors';
 
 export default function WeeklyTrendsCard({ selectedDate, targetCalories = 2000, onSelectDate }) {
-  const dataRevision = useNutritionStore((s) => s.dataRevision);
+  const dataRevision = useNutritionStore((s) => s.summaryRevision);
   const [weeklyData, setWeeklyData] = useState([]);
   const [loading, setLoading] = useState(true);
 

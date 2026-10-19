@@ -15,13 +15,14 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useAIStore } from '../stores/useAIStore';
 import { useNutritionStore } from '../stores/useNutritionStore';
 import { useProfileStore } from '../stores/useProfileStore';
 import AIChatBubble from '../components/AIChatBubble';
 import MealPlanCard from '../components/MealPlanCard';
+import EditorialCard from '../components/EditorialCard';
 import { colors, radius, typography } from '../theme/colors';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -256,6 +257,7 @@ export default function AssistantScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         >
+          {messages.length <= 1 && <EditorialCard image="ingredients" eyebrow="Your next good meal" title="A little inspiration, on your plate." description="Ask Sage for a meal idea using what you have, or build a plan around your goals." />}
           {messages.map((msg) => (
             <AIChatBubble
               key={msg.id}

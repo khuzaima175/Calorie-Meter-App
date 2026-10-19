@@ -6,6 +6,8 @@ package-lock.json.bak
 .expo/
 .expo-shared/
 dist/
+dist-verification/
+dist-preview/
 web-build/
 
 # Environment Variables (Never commit API keys)

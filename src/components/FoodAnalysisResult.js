@@ -4,19 +4,19 @@ import { Alert } from '../services/alertService';
 // src/components/FoodAnalysisResult.js
 // Interactive review & edit card for AI food analysis results with non-food guard & retake action
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Image,
   TouchableOpacity,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import Input from './Input';
 import Button from './Button';
+import CapturedPhotoPreview from './CapturedPhotoPreview';
 import { colors, radius, typography } from '../theme/colors';
 
 const MEAL_TYPES = [
@@ -34,6 +34,8 @@ export default function FoodAnalysisResult({
   onSave,
   onCancel,
   onSwitchToText,
+  onDraftChange,
+  cancelLabel = 'Discard & Retake',
 }) {
   const [name, setName] = useState(analysis?.name || '');
   const [mealType, setMealType] = useState(analysis?.meal_type || 'lunch');
@@ -48,6 +50,9 @@ export default function FoodAnalysisResult({
 
   const detectedMl = waterVolume(analysis, portion);
   const [waterMl, setWaterMl] = useState(detectedMl);
+  useEffect(() => {
+    onDraftChange?.({ name, meal_type: mealType, portion, calories, protein, carbs, fat, fiber, water_ml: waterMl });
+  }, [name, mealType, portion, calories, protein, carbs, fat, fiber, waterMl]);
 
   // Non-food / empty recognition check (water is valid hydration!)
   const normalizedName = (analysis?.name || '').toLowerCase();
@@ -77,6 +82,11 @@ export default function FoodAnalysisResult({
       sugar: analysis?.sugar ?? 0,
       sodium: analysis?.sodium ?? 0,
       image_uri: imageUri || null,
+      image_uris: imageUris || (imageUri ? [imageUri] : []),
+      ingredients: analysis?.ingredients || [],
+      dietary_tags: analysis?.dietary_tags || [],
+      health_tips: analysis?.health_tips || '',
+      health_score: analysis?.health_score || 0,
       timestamp: new Date().toISOString(),
     };
     try {
@@ -97,7 +107,7 @@ export default function FoodAnalysisResult({
         >
           {imageUris.map((uri, idx) => (
             <View key={idx} style={styles.multiImageCard}>
-              <Image source={{ uri }} style={styles.multiImage} resizeMode="cover" />
+              <CapturedPhotoPreview uri={uri} style={styles.multiImage} />
               <View style={styles.multiImageBadge}>
                 <Text style={styles.multiImageBadgeText}>Plate {idx + 1}</Text>
               </View>
@@ -106,12 +116,12 @@ export default function FoodAnalysisResult({
         </ScrollView>
       ) : imageUri ? (
         <View style={styles.imageContainer}>
-          <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
-          {analysis?.confidence && !isNoFoodDetected ? (
+          <CapturedPhotoPreview uri={imageUri} style={styles.image} />
+          {!isNoFoodDetected ? (
             <View style={styles.confidenceBadge}>
               <Ionicons name="sparkles" size={12} color={colors.sageBright} />
               <Text style={styles.confidenceText}>
-                {Math.round(analysis.confidence * 100)}% AI Match
+                AI estimate · review before saving
               </Text>
             </View>
           ) : null}
@@ -321,7 +331,7 @@ export default function FoodAnalysisResult({
           />
 
           <Button
-            title="Discard & Retake"
+            title={cancelLabel}
             onPress={onCancel} disabled={isSaving}
             variant="ghost"
             size="md"

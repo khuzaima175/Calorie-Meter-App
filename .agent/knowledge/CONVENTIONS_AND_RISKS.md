@@ -1,5 +1,7 @@
 # Conventions, Design Tokens, Testing & Risks — CalorieSnap Pro
 
+> Historical baseline below. Use `npm test` and [current verification](../../VERIFICATION_2026-10-19.md) for the 19 October tests and physical-device limits. Follow [PROJECT_SKILL](PROJECT_SKILL.md) for new job cancellation, persistence, ownership, and model-scoped compatibility behavior. Small tertiary text now uses #96969E.
+
 > **Last Reviewed:** 2026-10-17 | **Git Revision:** `2f87a3e` (`main`) | **Test Suite:** 54/54 Passing (`npm test`)
 
 ---

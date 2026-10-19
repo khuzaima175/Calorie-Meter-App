@@ -2,6 +2,10 @@
 
 Comprehensive technical architecture documentation for **CalorieSnap Pro**, an offline-first nutrition, hydration, and workout tracking mobile application built on Expo SDK 57, React Native 0.86, SQLite, and Google Gemini 3.5 Flash-Lite.
 
+Current scan implementation (19 October 2026): `LogMealScreen` hands raw photo URIs to a screen-independent `scanManager`. `imagePreparationService` stages durable originals, bounds food images to an 896px longest edge (JPEG 0.62) and labels to 1600px (0.82), without upscaling, then creates a 160px thumbnail. Base64 exists only during a request. `useScanStore` subscribes to jobs; `ScanInboxScreen` and `ScanStatusBanner` display progress and review drafts. One scan runs at a time, with up to three pending jobs. Navigation does not cancel work. Explicit discard aborts it; restart restores interrupted jobs for user-triggered retry.
+
+Saving uses an atomic diary write, completion receipt, and job deletion. Captured date and all prepared photos/analysis metadata survive saving. Data replacement invalidates the runner before clearing/importing records. Image deletion checks both meal and draft ownership. Failed file deletions are retained for cleanup retry. See [verification evidence and limits](VERIFICATION_2026-10-19.md) before treating bundle success as device verification.
+
 ---
 
 ## 1. System Overview & Architecture Topology
@@ -73,9 +77,10 @@ graph TD
    - Every meal, workout, hydration entry, and user target is committed directly to an ACID-compliant local **SQLite** database on the device.
    - The application functions seamlessly without an active internet connection. Network access is utilized exclusively for optional multimodal AI features and barcode product searches.
 
-2. **Sub-Second Multimodal AI Vision**:
-   - Primary AI model: **`gemini-3.5-flash-lite`** (~1,100ms average round-trip latency).
-   - Secondary fallback model: **`gemini-flash-lite-latest`** (automatic fallback on model unavailability or transient quota spikes).
+2. **Bounded Multimodal AI Requests**:
+   - Primary AI model: **`gemini-3.5-flash-lite`**; latency varies and is measured separately from preview rendering.
+   - Secondary fallback model: **`gemini-flash-lite-latest`** on primary 404/500/502/503/504. Quota errors remain actionable failures.
+   - Up to three total attempts within a shared 45-second vision deadline; each HTTP attempt is capped at 25 seconds. Cancellation propagates to fetch and every retry. A successful thinking-configuration compatibility retry is remembered per model.
    - Strict JSON structured output mode enforced via `responseMimeType: 'application/json'` and `generationConfig.responseSchema`.
 
 3. **Permanent Media & Cache Purge Protection**:
@@ -87,8 +92,8 @@ graph TD
    - **Monotonic Request Ordering**: Barcode queries utilize a monotonic request ID counter (`barcodeReqIdRef`) to discard out-of-order responses from slow network connections.
    - **Boundary Validation**: Numerical inputs enforce strict clinical boundaries ($1 \le \text{calories} \le 10,000$, $0 \le \text{macros} \le 1,000$, $1 \le \text{duration} \le 720\text{ mins}$).
 
-5. **Universal WCAG AA Accessibility (A11y)**:
-   - Full accessibility props (`accessibilityRole`, `accessibilityLabel`, `accessibilityHint`, `accessibilityState`) across all buttons, tabs, chips, modals, inputs, and charts.
+5. **Accessibility Support**:
+   - Controls use labels, roles, and states; scan status supports live announcements. Key animations respect reduced motion. Physical-device accessibility testing remains required.
 
 ---
 
@@ -119,7 +124,7 @@ graph TD
 ### 3. Android SurfaceView Hardware Layering & Full-Bleed Rendering
 In Android's graphics pipeline, React Native's `CameraView` uses a native `SurfaceView`/`TextureView` that renders on a dedicated hardware layer behind the application view tree:
 - **The Black Viewport Problem**: If parent containers have opaque background colors (e.g., `#000000` or `#121214`), React Native's Android `ViewGroup` renders an opaque box over the hardware surface hole, obscuring the camera feed everywhere except behind the translucent system status bar.
-- **Architectural Solution**: Container wrappers in [`LogMealScreen.js`](file:///g:/Important%20Projects/calorie%20meter/src/screens/LogMealScreen.js), [`CameraScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/CameraScanner.js), and [`NutritionLabelScanner.js`](file:///g:/Important%20Projects/calorie%20meter/src/components/NutritionLabelScanner.js) enforce `backgroundColor: 'transparent'` and `...StyleSheet.absoluteFillObject` coordinates, allowing the camera hardware surface to render full-bleed across 100% of the screen.
+- Camera overlays use supported `StyleSheet.absoluteFill`. Captured photos use `CapturedPhotoPreview` with explicit nonzero frame dimensions, load/error/retry handling, and IndexedDB URI resolution. Native capture still needs physical-device rendering and orientation checks.
 
 ---
 
@@ -145,7 +150,9 @@ CREATE TABLE IF NOT EXISTS meals (
   sugar REAL NOT NULL DEFAULT 0,
   sodium REAL NOT NULL DEFAULT 0,
   portion TEXT DEFAULT '1 serving',
-  image_uri TEXT                       -- Permanent local file path or IndexedDB key
+  image_uri TEXT,                      -- Permanent local file path or IndexedDB key
+  metadata TEXT DEFAULT '{}',          -- All photo URIs, ingredients, tags, tips, score
+  thumbnail_uri TEXT
 );
 
 -- 2. Exercises Table (Physical workouts and active burn)
@@ -201,11 +208,12 @@ CREATE INDEX IF NOT EXISTS idx_water_date ON water_intake(date);
 ### Schema Migration Engine
 The database uses `PRAGMA user_version` to handle schema migrations progressively without data loss:
 - **Version 1**: Initial baseline tables (`meals`, `exercises`, `water_intake`, `goals`, `profile`).
-- **Version 2**: Added micronutrient columns (`fiber`, `sugar`, `sodium`) to `meals` and `custom_api_key` to `profile`.
+- **Version 2**: Added `custom_api_key` to `profile` (micronutrients were already in version 1).
+- **Version 3**: Adds meal `metadata`/`thumbnail_uri` and tables `app_settings(key,value)`, `scan_jobs(id,payload)`, and `scan_receipts(id)`, in a transaction.
 
 ### Dual-Engine Web Storage Architecture
 When executed in a web browser (`Platform.OS === 'web'`):
-1. **Metadata & Relational Records**: Serialized to browser `localStorage` under `CALORIESNAP_WEB_STORE_V2`. Large base64 strings are stripped to prevent exceeding the browser's 5MB `localStorage` limit.
+1. **Metadata & Relational Records**: Serialized to browser `localStorage` under `caloriesnap_web_data_v1`. Durable jobs contain URI descriptors, never raw image data. Storage errors restore the last committed in-memory snapshot.
 2. **Binary Image Storage**: Stored in browser **IndexedDB** (`CalorieSnapImagesDB`) with a 10MB quota safety guard.
 
 ---
@@ -242,7 +250,7 @@ When executed in a web browser (`Platform.OS === 'web'`):
 [User Camera / Gallery] 
        │
        ▼
-[Image Preprocessing: JPEG 0.45 Quality, max 1024px] 
+[Raw preview -> durable staging -> bounded image preparation + thumbnail]
        │
        ▼
 [cleanBase64 Stripper: Remove 'data:image/...;base64,' prefix]
@@ -270,16 +278,15 @@ export const FOOD_ANALYSIS_SCHEMA = {
     name: { type: 'STRING' },
     meal_type: { type: 'STRING' },
     portion: { type: 'STRING' },
-    calories: { type: 'NUMBER' },
-    protein: { type: 'NUMBER' },
-    carbs: { type: 'NUMBER' },
-    fat: { type: 'NUMBER' },
-    fiber: { type: 'NUMBER' },
-    sugar: { type: 'NUMBER' },
-    sodium: { type: 'NUMBER' },
-    confidence: { type: 'NUMBER' },
+    calories: { type: 'INTEGER' },
+    protein: { type: 'INTEGER' },
+    carbs: { type: 'INTEGER' },
+    fat: { type: 'INTEGER' },
+    fiber: { type: 'INTEGER' },
+    sugar: { type: 'INTEGER' },
+    sodium: { type: 'INTEGER' },
   },
-  required: ['name', 'meal_type', 'portion', 'calories', 'protein', 'carbs', 'fat'],
+  // See geminiService.js for the complete schema, including hydration and descriptive metadata.
 };
 ```
 

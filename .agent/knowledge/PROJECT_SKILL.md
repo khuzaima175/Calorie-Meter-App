@@ -1,6 +1,6 @@
 # Project Skill — CalorieSnap Pro (Master Agent Entry Point)
 
-> **Last Reviewed:** 2026-10-17 | **Git Revision:** `2f87a3e` (`main`) | **Test Suite:** 54/54 Passing (`npm test`)
+> **Updated:** 2026-10-19, uncommitted implementation. Run `npm test`; see [current verification](../../VERIFICATION_2026-10-19.md) for results and device limits.
 > **Purpose:** Self-sufficient architectural, UI, state, and service reference for AI coding agents. Read this file first; consult the 5 companion files in `.agent/knowledge/` only when deeper detail is needed.
 
 ---
@@ -9,7 +9,16 @@
 
 - **CalorieSnap Pro** is an offline-first, AI-powered nutrition, hydration, and exercise tracker built with **Expo SDK 57 (`~57.0.25`)**, **React Native `0.86.3`**, **React `19.2.3`**, and **Zustand `^5.0.0`** targeting **Android, iOS, and Web**.
 - **CRITICAL REPO BOUNDARY**: The active production app lives entirely in `src/`, `tests/`, `index.js`, `app.json`, and `package.json`. Ignore root Python files (`main.py`, `database.py`, `ai_manager.py`, `ui/`), which belong to an inactive legacy desktop prototype.
-- **Verification Command**: `npm test` (runs `node --test tests/*.test.js` — 54 passing tests across 6 test suites using [`tests/load-production.cjs`](file:///g:/calorie%20meter/tests/load-production.cjs) to execute real JSX/ESM production code in Node VM).
+- **Verification Command**: `npm test` runs production modules through `tests/load-production.cjs`, with native APIs mocked. Tests do not establish physical-device layout, camera orientation, notification delivery, or latency.
+
+### Current scan architecture (supersedes older capture descriptions below)
+
+- `scanManager`/`scanService` own jobs outside screens. `useScanStore` subscribes; `ScanInboxScreen` reviews and `ScanStatusBanner` links to results. Photo, label, text, and barcode inputs share one serial runner (three pending jobs maximum).
+- Raw preview comes before resize/network work. Food longest edge 896px / JPEG .62, label 1600px / .82, no upscaling; 160px thumbnails. Camera uses supported `absoluteFill`, readiness/error handlers, and `skipProcessing: false`.
+- SQLite migration 3 adds `metadata`, `thumbnail_uri`, `app_settings`, `scan_jobs`, `scan_receipts`. Native/web scan save is atomic and idempotent; all photo references and original date are retained. Interrupted scans require explicit retry after restart; app-close processing is not guaranteed.
+- Reset/import invalidates jobs before replacing data. Durable media ownership includes both meals and jobs; JSON backups omit API keys and pending jobs, and import retains the current key.
+- Native reminders use persistent opt-out and cancel only reminder-tagged notifications. Scan-ready notifications use separate metadata/channel. Web recurring reminders are unavailable.
+- Weekly totals use three grouped native queries and `summaryRevision` invalidation. Fresh diaries start empty; demo is explicit. Editorial assets total 99,739 bytes. Performance claims must be measured.
 
 ---
 
@@ -43,7 +52,7 @@
 
 - **[`geminiService.js`](file:///g:/calorie%20meter/src/services/geminiService.js)**:
   - Models: `PRIMARY_MODEL = 'gemini-3.5-flash-lite'`, `FALLBACK_MODEL = 'gemini-flash-lite-latest'`, `CHAT_MODEL = 'gemini-3.5-flash-lite'`.
-  - Fast Inference: Sends `generationConfig.thinkingConfig: { thinkingLevel: 'MINIMAL' }` and uses `INTEGER` schema fields to prevent float runaway loops. Automatically falls back to standard config on any non-key 400 (`thinkingConfigUnsupported = true`).
+  - Fast mode sends `thinkingLevel: 'MINIMAL'` with `INTEGER` nutrition schemas. Compatibility retries are limited to applicable 400 errors and remembered per model after success. Three attempts share a 45-second budget, with cancellation propagated throughout. Network attempts have their own quota limiter; logical retries still use `isRetry: true`.
   - Two-Pass Lenient Vision: `isGenuineNoFood(p)` check triggers a second, more lenient retry pass before raising tagged `NO_FOOD` error.
   - Rate Limiter: 60 RPM custom key, 15 RPM shared. Internal retries set `isRetry: true` to prevent double-counting request tokens.
   - Functions: `getApiKey()`, `cleanBase64()`, `parseAndFormatGeminiError()`, `testGeminiApiKey()`, `cleanJsonText()`, `analyzeFoodPhoto()`, `analyzeNutritionLabel()`, `parseMealDescription()`, `sendNutritionistChatMessage()`, `generateDailyReview()`, `generatePersonalizedMealPlan()`, `estimateExerciseFromText()`, `getCurrentMealPeriod()`.

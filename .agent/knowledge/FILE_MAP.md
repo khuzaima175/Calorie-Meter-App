@@ -1,5 +1,7 @@
 # File Map — CalorieSnap Pro
 
+> Historical baseline below; old line counts and capture file descriptions are superseded. New runner/store/UI/services are listed in [PROJECT_SKILL](PROJECT_SKILL.md); current evidence is in [verification](../../VERIFICATION_2026-10-19.md).
+
 > **Last Reviewed:** 2026-10-17 | **Git Revision:** `2f87a3e` (`main`) | **Test Suite:** 54/54 Passing (`npm test`)
 
 ---

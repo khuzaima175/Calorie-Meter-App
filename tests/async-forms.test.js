@@ -26,7 +26,7 @@ function harness(file, extraMocks = {}) {
       }
     },
   };
-  const native = { StyleSheet: { create: x => x }, Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
+  const native = { StyleSheet: { create: x => x, absoluteFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } }, Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
     Animated: { Value: class { setValue() {} interpolate() { return 0; } },
       timing: () => ({}), sequence: () => ({}), loop: () => ({ start() {}, stop() {} }) },
   };
@@ -38,8 +38,9 @@ function harness(file, extraMocks = {}) {
     '@expo/vector-icons': { Ionicons: 'Icon' },
     'expo-haptics': { impactAsync: async () => {}, notificationAsync: async () => {}, ImpactFeedbackStyle: {}, NotificationFeedbackType: {} },
     [path.resolve('src/services/alertService')]: { Alert: { alert: (...args) => alerts.push(args) } },
+    [path.resolve('src/services/scanService')]: { scanManager: { enqueue: () => 'scan-test' } },
   };
-  for (const name of ['Input', 'Button', 'Card', 'CameraScanner', 'BarcodeScanner', 'NutritionLabelScanner', 'FoodAnalysisResult']) {
+  for (const name of ['Input', 'Button', 'Card', 'CameraScanner', 'BarcodeScanner', 'NutritionLabelScanner', 'FoodAnalysisResult', 'CapturedPhotoPreview']) {
     mocks[path.resolve(`src/components/${name}`)] = { __esModule: true, default: name };
   }
   const Component = createLoader({ ...mocks, ...extraMocks })(file).default;
@@ -213,10 +214,10 @@ test('Shutter capture immediately unmounts live CameraScanner into analysis view
 
   // Live CameraScanner must be unmounted so camera closes immediately
   assert.equal(app.find(n => n.type === 'CameraScanner'), undefined);
-  assert.ok(app.find(n => n.type === 'Image' && n.props.source?.uri === 'file:///captured-meal.jpg'));
+  assert.ok(app.find(n => n.type === 'CapturedPhotoPreview' && n.props.uri === 'file:///captured-meal.jpg'));
 
   // 2. User taps Cancel & Retake before vision resolves
-  const cancelBtn = app.find(n => n.type === 'TouchableOpacity' && n.props.accessibilityLabel === 'Cancel analysis');
+  const cancelBtn = app.find(n => n.type === 'Button' && n.props.accessibilityLabel === 'Cancel analysis');
   assert.ok(cancelBtn);
   cancelBtn.props.onPress();
   app.render();
@@ -224,4 +225,41 @@ test('Shutter capture immediately unmounts live CameraScanner into analysis view
   // Live CameraScanner is restored
   assert.ok(app.find(n => n.type === 'CameraScanner'));
   app.unmount();
+});
+
+test('Raw photo handoff opens shared scans and retains the diary date from shutter time', () => {
+  let selectedDate='2026-10-01', queued, destination;
+  const store=selector=>selector({ addMeal:async()=>{} }); store.getState=()=>({ selectedDate });
+  const app=harness('src/screens/LogMealScreen.js', {
+    [geminiPath]: {}, [databasePath]: { useNutritionStore:store },
+    [path.resolve('src/services/scanService')]: { scanManager: { enqueue: input=>{ queued=input; return 'scan-1'; } } },
+  });
+  app.render({ navigation:{ navigate:(route,params)=>{ destination={route,params}; } } });
+  const scanner=app.find(n=>n.type==='CameraScanner');
+  scanner.props.onCaptureStart('file:///raw.jpg'); selectedDate='2026-09-30';
+  scanner.props.onCapturePhoto({ uri:'file:///raw.jpg', photos:[{uri:'file:///raw.jpg'}], userNote:'Half portion' });
+  assert.equal(queued.date,'2026-10-01'); assert.equal(queued.photos[0].uri,'file:///raw.jpg');
+  assert.equal(queued.photos[0].base64,undefined); assert.equal(queued.context.userNote,'Half portion');
+  assert.deepEqual(destination,{route:'Scans',params:{jobId:'scan-1'}}); app.unmount();
+});
+
+test('Reviewing a ready scan preserves edits, leaves analysis active across navigation, and offers discard', async () => {
+  let discarded, draft, destination;
+  const job={id:'review-1',date:'2026-10-01',status:'ready',photos:[{uri:'file:///food.jpg'}],result:{name:'Lunch',calories:420},draft:{name:'Edited lunch'}};
+  const app=harness('src/screens/ScanInboxScreen.js', {
+    [path.resolve('src/stores/useScanStore')]: { useScanStore: selector=>selector({jobs:[job],isPaused:false}) },
+    [databasePath]: { useNutritionStore: {getState:()=>({})} },
+    [path.resolve('src/services/scanService')]: { scanManager: {
+      setDraft:async(id,value)=>{draft={id,value};}, discard:async id=>{discarded=id;},
+    } },
+  });
+  app.render({focusId:job.id,navigation:{navigate:route=>{destination=route;}}});
+  const result=app.find(n=>n.type==='FoodAnalysisResult');
+  assert.equal(result.props.analysis.name,'Edited lunch');
+  result.props.onDraftChange({name:'Another edit'}); await new Promise(setImmediate);
+  assert.deepEqual(draft,{id:job.id,value:{name:'Another edit'}});
+  app.find(n=>n.type==='Button'&&n.props.title==='Continue using app').props.onPress();
+  assert.equal(destination,'Dashboard'); assert.equal(discarded,undefined);
+  await app.find(n=>n.type==='Button'&&n.props.title==='Discard scan').props.onPress();
+  assert.equal(discarded,job.id); app.unmount();
 });

@@ -10,29 +10,13 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, typography } from '../theme/colors';
 import { formatTimeString } from '../services/databaseService';
-import { resolveImageUriAsync } from '../services/imageService';
+import CapturedPhotoPreview from './CapturedPhotoPreview';
 
 export default function MealCard({ meal, onDelete, onPress }) {
-  const [displayImageUri, setDisplayImageUri] = useState(meal?.image_uri || null);
-
-  useEffect(() => {
-    let isMounted = true;
-    let objectUrl = null;
-    setDisplayImageUri(null);
-    resolveImageUriAsync(meal?.image_uri).then((resolved) => {
-      if (resolved?.startsWith('blob:') && meal?.image_uri?.startsWith('indexeddb://')) objectUrl = resolved;
-      if (isMounted) setDisplayImageUri(resolved);
-      else if (objectUrl) URL.revokeObjectURL(objectUrl);
-    });
-    return () => {
-      isMounted = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [meal?.image_uri]);
   const handleDelete = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     Alert.alert(
@@ -57,8 +41,8 @@ export default function MealCard({ meal, onDelete, onPress }) {
       style={styles.card}
     >
       <View style={styles.topRow}>
-        {displayImageUri ? (
-          <Image source={{ uri: displayImageUri }} style={styles.thumbnail} accessibilityLabel={`${meal.name} photo`} />
+        {meal.image_uri ? (
+          <CapturedPhotoPreview uri={meal.thumbnail_uri || meal.image_uri} compact style={styles.thumbnail} label={`${meal.name} photo`} />
         ) : null}
 
         <TouchableOpacity style={styles.infoContainer} onPress={() => onPress?.(meal)}

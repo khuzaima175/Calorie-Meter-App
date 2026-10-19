@@ -2,10 +2,13 @@
 // Circular SVG Calorie Ring with smooth animated stroke fill and remaining count
 // Cross-platform compatible (iOS, Android, and Web)
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import Svg, { Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
+import useReducedMotion from '../hooks/useReducedMotion';
 import { colors, typography } from '../theme/colors';
+
+const AnimatedCircle = Animated.createAnimatedComponent ? Animated.createAnimatedComponent(Circle) : Circle;
 
 export default function CalorieRing({
   consumed = 0,
@@ -14,6 +17,7 @@ export default function CalorieRing({
   size = 180,
   strokeWidth = 14,
 }) {
+  const reducedMotion = useReducedMotion();
   const animatedProgress = useRef(new Animated.Value(0)).current;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -24,28 +28,13 @@ export default function CalorieRing({
   const percentage = goal > 0 ? Math.min(1.2, Math.max(0, netConsumed - burned) / goal) : 0;
   const isOver = remaining < 0;
 
-  const [strokeDashoffset, setStrokeDashoffset] = useState(
-    circumference * (1 - Math.min(1, percentage))
-  );
-
+  const strokeDashoffset = animatedProgress.interpolate({ inputRange: [0, 1], outputRange: [circumference, 0], extrapolate: 'clamp' });
   useEffect(() => {
-    const listenerId = animatedProgress.addListener(({ value }) => {
-      const clampedVal = Math.min(1, Math.max(0, value));
-      setStrokeDashoffset(circumference * (1 - clampedVal));
-    });
-
-    Animated.spring(animatedProgress, {
-      toValue: percentage,
-      useNativeDriver: false,
-      damping: 18,
-      stiffness: 90,
-      mass: 0.8,
-    }).start();
-
-    return () => {
-      animatedProgress.removeListener(listenerId);
-    };
-  }, [percentage, animatedProgress, circumference]);
+    if (reducedMotion) { animatedProgress.setValue(percentage); return; }
+    const animation = Animated.spring(animatedProgress, { toValue: percentage, useNativeDriver: false, damping: 18, stiffness: 90, mass: 0.8 });
+    animation.start();
+    return () => animation.stop?.();
+  }, [percentage, reducedMotion, animatedProgress]);
 
   const ringColor = isOver ? colors.caloriesBurned : colors.sagePrimary;
   const ringEndColor = isOver ? colors.error : colors.sageBright;
@@ -73,7 +62,7 @@ export default function CalorieRing({
           />
 
           {/* Progress Circle */}
-          <Circle
+          <AnimatedCircle
             cx={center}
             cy={center}
             r={radius}

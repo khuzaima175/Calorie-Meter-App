@@ -4,13 +4,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import DashboardScreen from '../screens/DashboardScreen';
 import LogMealScreen from '../screens/LogMealScreen';
 import ActivityScreen from '../screens/ActivityScreen';
 import AssistantScreen from '../screens/AssistantScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ScanInboxScreen from '../screens/ScanInboxScreen';
+import ScanStatusBanner from '../components/ScanStatusBanner';
+import { subscribeToScanNotifications } from '../services/notificationService';
 import { colors, radius, shadows, typography } from '../theme/colors';
 
 const TABS = [
@@ -23,9 +26,11 @@ const TABS = [
 
 export default function TabNavigator() {
   const [activeRoute, setActiveRoute] = useState('Dashboard');
+  const [routeParams, setRouteParams] = useState({});
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const centerBtnScale = useRef(new Animated.Value(1)).current;
   const insets = useSafeAreaInsets();
+  useEffect(() => subscribeToScanNotifications((jobId) => { setRouteParams({ jobId }); setActiveRoute('Scans'); }), []);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -40,7 +45,7 @@ export default function TabNavigator() {
     };
   }, []);
 
-  const handleTabPress = (routeKey) => {
+  const handleTabPress = (routeKey, params = {}) => {
     Haptics.impactAsync(
       routeKey === 'LogMeal'
         ? Haptics.ImpactFeedbackStyle.Medium
@@ -65,10 +70,11 @@ export default function TabNavigator() {
     }
 
     setActiveRoute(routeKey);
+    setRouteParams(params);
   };
 
   const navigationMock = {
-    navigate: (route) => handleTabPress(route),
+    navigate: (route, params) => handleTabPress(route, params),
   };
 
   const renderActiveScreen = () => {
@@ -76,7 +82,9 @@ export default function TabNavigator() {
       case 'Dashboard':
         return <DashboardScreen navigation={navigationMock} />;
       case 'LogMeal':
-        return <LogMealScreen navigation={navigationMock} />;
+        return <LogMealScreen key={JSON.stringify(routeParams)} navigation={navigationMock} route={{ params: routeParams }} />;
+      case 'Scans':
+        return <ScanInboxScreen key={routeParams.jobId || 'inbox'} navigation={navigationMock} focusId={routeParams.jobId} />;
       case 'Activity':
         return <ActivityScreen navigation={navigationMock} />;
       case 'Assistant':
@@ -97,6 +105,7 @@ export default function TabNavigator() {
     <View style={styles.container}>
       {/* Active Screen View */}
       <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
+      {activeRoute !== 'LogMeal' && activeRoute !== 'Scans' && !isKeyboardVisible && <ScanStatusBanner onOpen={(jobId) => handleTabPress('Scans', { jobId })} />}
 
       {/* Docked Bottom Tab Bar (hidden when camera/logging viewfinder is active) */}
       {!hideTabBar && (

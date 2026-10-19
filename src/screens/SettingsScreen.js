@@ -19,7 +19,7 @@ import {
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useProfileStore, calculateMetabolism } from '../stores/useProfileStore';
 import { useNutritionStore } from '../stores/useNutritionStore';
@@ -679,13 +679,13 @@ export default function SettingsScreen() {
             <View style={{ flex: 1, paddingRight: 12 }}>
               <Text style={styles.switchTitle}>Daily Logging Reminders</Text>
               <Text style={styles.switchSub}>
-                Smart prompts for breakfast, lunch, hydration, and daily evening macro review.
+                {Platform.OS === 'web' ? 'Daily reminders are available in the Android and iOS app.' : 'Prompts for breakfast, lunch, hydration, and evening review.'}
               </Text>
             </View>
             <Switch
               value={notificationsEnabled}
               onValueChange={handleToggleNotifications}
-              disabled={notificationsBusy}
+              disabled={notificationsBusy || Platform.OS === 'web'}
               trackColor={{ false: colors.cardBorder, true: colors.sageBright }}
               thumbColor={Platform.OS === 'ios' ? '#ffffff' : (notificationsEnabled ? '#ffffff' : '#888888')}
               accessibilityLabel="Toggle daily meal and water reminders"

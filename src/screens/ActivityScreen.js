@@ -2,7 +2,7 @@ import { Alert } from '../services/alertService';
 // src/screens/ActivityScreen.js
 // Fitness and Workout Tracking Screen: Active minutes, calories burned, workout history, and MET calculator
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useNutritionStore } from '../stores/useNutritionStore';
 import { useProfileStore } from '../stores/useProfileStore';
@@ -22,9 +22,12 @@ import AddExerciseModal from '../components/AddExerciseModal';
 import Card from '../components/Card';
 import NutritionErrorBanner from '../components/NutritionErrorBanner';
 import Button from '../components/Button';
+import EditorialCard from '../components/EditorialCard';
 import { colors, radius, typography } from '../theme/colors';
 
 export default function ActivityScreen() {
+  const quickSaveLock = useRef(false);
+  const [quickSaving, setQuickSaving] = useState(false);
   const selectedDate = useNutritionStore((s) => s.selectedDate);
   const setSelectedDate = useNutritionStore((s) => s.setSelectedDate);
   const refreshData = useNutritionStore((s) => s.refreshData);
@@ -45,6 +48,8 @@ export default function ActivityScreen() {
   ];
 
   const handleQuickLog = async (item) => {
+    if (quickSaveLock.current) return;
+    quickSaveLock.current = true; setQuickSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const cals = Math.round(((item.met * 3.5 * userWeight) / 200) * item.mins);
     try {
@@ -59,7 +64,7 @@ export default function ActivityScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
       Alert.alert('Workout Log Failed', err.message);
-    }
+    } finally { quickSaveLock.current = false; setQuickSaving(false); }
   };
 
   const walkingExercises = exercises.filter(
@@ -154,6 +159,7 @@ export default function ActivityScreen() {
         </Card>
 
         {/* Quick 1-Tap Log Shortcuts */}
+        <EditorialCard image="walk" eyebrow="A little, every day" title="Find your own pace." description="A short walk counts. Log your movement and build a routine that fits your day." action="Log a walk" onPress={() => setModalVisible(true)} />
         <Text style={styles.sectionHeading}>Quick 1-Tap Log</Text>
         <ScrollView
           horizontal
@@ -168,6 +174,7 @@ export default function ActivityScreen() {
                 key={idx}
                 style={styles.quickLogCard}
                 onPress={() => handleQuickLog(act)}
+                disabled={quickSaving}
                 activeOpacity={0.7}
               >
                 <View style={styles.quickLogIconCircle}>

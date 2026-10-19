@@ -27,6 +27,8 @@ export const useNutritionStore = create((set, get) => ({
   isLoading: false,
   error: null,
   dataRevision: 0,
+  summaryRevision: 0,
+  invalidateSummary: () => set((state) => ({ summaryRevision: state.summaryRevision + 1 })),
 
   dailyTotals: {
     calories: 0,
@@ -97,39 +99,46 @@ export const useNutritionStore = create((set, get) => ({
   addMeal: async (mealData) => {
     const targetDate = mealData.date || get().selectedDate;
     await insertMeal({ ...mealData, date: targetDate });
+    get().invalidateSummary();
     await get().refreshData();
   },
 
   editMeal: async (id, mealData) => {
     await updateMeal(id, mealData);
+    get().invalidateSummary();
     await get().refreshData();
   },
 
   removeMeal: async (id) => {
     await deleteMealById(id);
+    get().invalidateSummary();
     await get().refreshData();
   },
 
   logWater: async (amountMl, date) => {
     const targetDate = validateDate(date || get().selectedDate);
     await addWaterIntake(amountMl, targetDate);
+    get().invalidateSummary();
     await get().refreshData();
   },
 
   undoWater: async () => {
     const targetDate = get().selectedDate;
     await removeRecentWaterIntake(targetDate);
+    get().invalidateSummary();
     await get().refreshData();
   },
 
   addExercise: async (exerciseData) => {
     const targetDate = exerciseData.date || get().selectedDate;
     await insertExercise({ ...exerciseData, date: targetDate });
+    get().invalidateSummary();
     await get().refreshData();
   },
 
   removeExercise: async (id) => {
     await deleteExerciseById(id);
+    get().invalidateSummary();
     await get().refreshData();
   },
 }));
